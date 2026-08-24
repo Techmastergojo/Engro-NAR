@@ -82,8 +82,8 @@ export interface DailySummary {
 }
 
 export interface HistoricalPeriod {
-  id: string; // e.g. 'aug-2026', 'sep-2026', 'mar-2026'
-  name: string; // e.g. 'August 2026', 'March 2026'
+  id: string;
+  name: string;
   createdAt: string;
   sitesCount: number;
   totalDtHours: number;
@@ -95,6 +95,11 @@ export interface HistoricalPeriod {
   sampleIncidents: OutageRecord[];
 }
 
-export type TabType = 'dashboard' | 'graphs' | 'sites' | 'import';
+export interface GlobalTimelineFilter {
+  mode: 'all' | 'custom' | 'single';
+  startDate: string; // YYYY-MM-DD (From Date)
+  endDate: string; // YYYY-MM-DD (To Date)
+  singleDate?: string;
+}
 
-export type TimelineFilter = 'all' | 'w1' | 'w2' | 'w3' | 'w4';
+export type TabType = 'dashboard' | 'graphs' | 'sites' | 'import';

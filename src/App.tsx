@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type { TabType, UserRole, HistoricalPeriod } from './types';
+import type { TabType, UserRole, HistoricalPeriod, GlobalTimelineFilter } from './types';
 import { getAllPeriods, getActivePeriod, getActivePeriodId, setActivePeriodId } from './utils/periodStore';
 import { syncDailyCloudTelemetry } from './utils/cloudSync';
 import { Header } from './components/Header';
@@ -9,6 +9,7 @@ import { GraphsTab } from './components/GraphsTab';
 import { SitesTab } from './components/SitesTab';
 import { ImportTab } from './components/ImportTab';
 import { RoleSelectorModal } from './components/RoleSelectorModal';
+import { TimelineFilterModal } from './components/TimelineFilterModal';
 import { UpdateModal } from './components/UpdateModal';
 import { checkForAppUpdates, type UpdateInfo } from './utils/updateChecker';
 import './App.css';
@@ -18,6 +19,14 @@ export const App: React.FC = () => {
   const [allPeriods, setAllPeriods] = useState<HistoricalPeriod[]>(() => getAllPeriods());
   const [activePeriodId, setActivePeriodIdState] = useState<string>(() => getActivePeriodId());
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
+
+  // Global Timeline Filter State (From Date ➔ To Date)
+  const [timelineFilter, setTimelineFilter] = useState<GlobalTimelineFilter>({
+    mode: 'all',
+    startDate: '2026-08-01',
+    endDate: '2026-08-20'
+  });
+  const [showTimelineModal, setShowTimelineModal] = useState<boolean>(false);
 
   const [currentRole, setCurrentRole] = useState<UserRole>(() => {
     const saved = localStorage.getItem('engro_user_role');
@@ -108,6 +117,8 @@ export const App: React.FC = () => {
             <DashboardTab
               currentRole={currentRole}
               activePeriod={activePeriod}
+              timelineFilter={timelineFilter}
+              onOpenTimelineModal={() => setShowTimelineModal(true)}
               onNavigateToSites={handleNavigateToSites}
               onNavigateToGraphs={() => setActiveTab('graphs')}
             />
@@ -124,6 +135,8 @@ export const App: React.FC = () => {
             <SitesTab
               currentRole={currentRole}
               activePeriod={activePeriod}
+              timelineFilter={timelineFilter}
+              onOpenTimelineModal={() => setShowTimelineModal(true)}
               initialQuery={siteSearchQuery}
             />
           )}
@@ -144,6 +157,15 @@ export const App: React.FC = () => {
           onChangeTab={(tab) => setActiveTab(tab)}
         />
       </div>
+
+      {/* Global Timeline Filter Modal (From Date ➔ To Date) */}
+      {showTimelineModal && (
+        <TimelineFilterModal
+          currentFilter={timelineFilter}
+          onApplyFilter={(newFilter) => setTimelineFilter(newFilter)}
+          onClose={() => setShowTimelineModal(false)}
+        />
+      )}
 
       {/* Role & MBU Selection Modal */}
       {showRoleModal && (

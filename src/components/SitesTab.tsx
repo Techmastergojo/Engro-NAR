@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import type { UserRole, SiteCatalogItem, HistoricalPeriod } from '../types';
+import type { UserRole, SiteCatalogItem, HistoricalPeriod, GlobalTimelineFilter } from '../types';
 import {
   Search,
   Filter,
@@ -10,20 +10,25 @@ import {
   Wrench,
   AlertTriangle,
   Sparkles,
-  Calendar
+  Calendar,
+  SlidersHorizontal,
+  Clock
 } from 'lucide-react';
-
 import { soundFX } from '../utils/soundEffects';
 
 interface SitesTabProps {
   currentRole: UserRole;
   activePeriod: HistoricalPeriod;
+  timelineFilter: GlobalTimelineFilter;
+  onOpenTimelineModal: () => void;
   initialQuery?: string;
 }
 
 export const SitesTab: React.FC<SitesTabProps> = ({
   currentRole,
   activePeriod,
+  timelineFilter,
+  onOpenTimelineModal,
   initialQuery = ''
 }) => {
   const [searchTerm, setSearchTerm] = useState(initialQuery);
@@ -31,20 +36,48 @@ export const SitesTab: React.FC<SitesTabProps> = ({
   const [selectedSite, setSelectedSite] = useState<SiteCatalogItem | null>(null);
   const [pageLimit, setPageLimit] = useState<number>(25);
 
-  // Site-level Date Range Filter state
-  const [timelineModalSite, setTimelineModalSite] = useState<SiteCatalogItem | null>(null);
-  const [filterStartDate, setFilterStartDate] = useState<string>('2026-08-01');
-  const [filterEndDate, setFilterEndDate] = useState<string>('2026-08-20');
-  const [selectedSingleDay, setSelectedSingleDay] = useState<string | null>(null);
+  // Site-specific internal Date Range Filter modal
+  const [siteModalFromDate, setSiteModalFromDate] = useState<string>(timelineFilter.startDate);
+  const [siteModalToDate, setSiteModalToDate] = useState<string>(timelineFilter.endDate);
+  const [siteModalSingleDay, setSiteModalSingleDay] = useState<string | null>(
+    timelineFilter.mode === 'single' ? timelineFilter.singleDate || null : null
+  );
 
   const mbuList = useMemo(() => {
     const set = new Set(activePeriod.allSites.map((s) => s.mbu).filter(Boolean));
     return ['all', ...Array.from(set)];
   }, [activePeriod]);
 
-  // Filtered sites from active period
+  // Recalculate site stats based on the global timeline filter
+  const timelineAdjustedSites = useMemo(() => {
+    return activePeriod.allSites.map((site) => {
+      if (!site.dailyTimeline || site.dailyTimeline.length === 0) {
+        return site;
+      }
+
+      const filteredDays = site.dailyTimeline.filter((d) => {
+        if (timelineFilter.mode === 'single' && timelineFilter.singleDate) {
+          return d.date === timelineFilter.singleDate;
+        }
+        return d.date >= timelineFilter.startDate && d.date <= timelineFilter.endDate;
+      });
+
+      const rangeDtHours = filteredDays.reduce((sum, d) => sum + d.hours, 0);
+      const totalPossibleHours = Math.max(1, filteredDays.length) * 24;
+      const rangeAvail = Math.max(70, Number(((totalPossibleHours - rangeDtHours) / totalPossibleHours * 100).toFixed(2)));
+
+      return {
+        ...site,
+        totalDtHours: Number(rangeDtHours.toFixed(1)),
+        availability: rangeAvail,
+        rangeDaysCount: filteredDays.length
+      };
+    });
+  }, [activePeriod, timelineFilter]);
+
+  // Filter sites by search and MBU
   const filteredSites = useMemo(() => {
-    return activePeriod.allSites.filter((s) => {
+    return timelineAdjustedSites.filter((s) => {
       const matchesSearch =
         s.siteCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
         s.siteName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -54,12 +87,12 @@ export const SitesTab: React.FC<SitesTabProps> = ({
 
       return matchesSearch && matchesMbu;
     });
-  }, [searchTerm, selectedMbu, activePeriod]);
+  }, [searchTerm, selectedMbu, timelineAdjustedSites]);
 
   const displayedSites = filteredSites.slice(0, pageLimit);
 
-  // Calculate filtered stats for a site within selected date range
-  const getSiteFilteredStats = (site: SiteCatalogItem) => {
+  // Compute stats for the diagnostic modal for custom chosen dates
+  const getModalSiteStats = (site: SiteCatalogItem) => {
     if (!site.dailyTimeline || site.dailyTimeline.length === 0) {
       return {
         downtimeHours: site.totalDtHours,
@@ -70,14 +103,14 @@ export const SitesTab: React.FC<SitesTabProps> = ({
     }
 
     const filteredDays = site.dailyTimeline.filter((d) => {
-      if (selectedSingleDay) {
-        return d.date === selectedSingleDay;
+      if (siteModalSingleDay) {
+        return d.date === siteModalSingleDay;
       }
-      return d.date >= filterStartDate && d.date <= filterEndDate;
+      return d.date >= siteModalFromDate && d.date <= siteModalToDate;
     });
 
     const rangeDt = filteredDays.reduce((sum, d) => sum + d.hours, 0);
-    const rangeDays = selectedSingleDay ? 1 : Math.max(1, filteredDays.length);
+    const rangeDays = siteModalSingleDay ? 1 : Math.max(1, filteredDays.length);
     const totalPossibleHours = rangeDays * 24;
     const rangeAvail = Math.max(70, Number(((totalPossibleHours - rangeDt) / totalPossibleHours * 100).toFixed(2)));
 
@@ -109,8 +142,35 @@ export const SitesTab: React.FC<SitesTabProps> = ({
     return 'Conduct comprehensive site infrastructure and optical backhaul diagnostic audit.';
   };
 
+  const timelineLabel = timelineFilter.mode === 'single'
+    ? `Single Day: ${timelineFilter.singleDate}`
+    : timelineFilter.mode === 'all'
+    ? `Full Month (Aug 1 - Aug 20)`
+    : `From ${timelineFilter.startDate} To ${timelineFilter.endDate}`;
+
   return (
     <div className="tab-content sites-content">
+      {/* Prominent Timeline Filter Bar */}
+      <div className="corp-card timeline-control-bar" onClick={onOpenTimelineModal}>
+        <div className="timeline-control-left">
+          <div className="timeline-icon-box">
+            <Calendar size={18} className="text-engro-green" />
+          </div>
+          <div className="timeline-text-group">
+            <div className="timeline-micro-tag">
+              <span>TIMELINE SCOPE:</span>
+              <span className="timeline-status-active">APPLIED</span>
+            </div>
+            <strong className="timeline-range-text">{timelineLabel}</strong>
+          </div>
+        </div>
+
+        <button className="open-timeline-modal-btn">
+          <SlidersHorizontal size={14} />
+          <span>Change Dates</span>
+        </button>
+      </div>
+
       {/* Search & Filter Header */}
       <div className="corp-card search-card">
         <div className="search-input-box">
@@ -154,7 +214,7 @@ export const SitesTab: React.FC<SitesTabProps> = ({
       {/* Results Meta Info */}
       <div className="search-meta-bar">
         <span>
-          Showing <strong>{displayedSites.length}</strong> of {filteredSites.length} Towers ({activePeriod.name})
+          Showing <strong>{displayedSites.length}</strong> of {filteredSites.length} Towers ({timelineLabel})
         </span>
         <span className="sort-tag">Ranked by Outage Hours</span>
       </div>
@@ -171,14 +231,18 @@ export const SitesTab: React.FC<SitesTabProps> = ({
           displayedSites.map((site) => {
             const isGood = site.availability >= 99.0;
             return (
-              <div key={site.siteCode} className="corp-card site-card-row">
-                <div
-                  className="site-row-left"
-                  onClick={() => {
-                    soundFX.playClick();
-                    setSelectedSite(site);
-                  }}
-                >
+              <div
+                key={site.siteCode}
+                className="corp-card site-card-row"
+                onClick={() => {
+                  soundFX.playClick();
+                  setSelectedSite(site);
+                  setSiteModalFromDate(timelineFilter.startDate);
+                  setSiteModalToDate(timelineFilter.endDate);
+                  setSiteModalSingleDay(timelineFilter.mode === 'single' ? timelineFilter.singleDate || null : null);
+                }}
+              >
+                <div className="site-row-left">
                   <div className="site-code-badge-row">
                     <span className="site-code-badge">{site.siteCode}</span>
                     <span className="site-mbu-tag">{site.mbu}</span>
@@ -201,20 +265,10 @@ export const SitesTab: React.FC<SitesTabProps> = ({
                     {site.availability}%
                   </span>
                   
-                  {/* Dedicated Timeline & Date Filter Button */}
-                  <button
-                    className="site-timeline-action-btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      soundFX.playClick();
-                      setTimelineModalSite(site);
-                      setSelectedSingleDay(null);
-                    }}
-                    title="Filter Outages by Custom Dates / Days"
-                  >
-                    <Calendar size={11} />
-                    <span>Date Filter</span>
-                  </button>
+                  <span className="site-timeline-indicator">
+                    <Calendar size={10} />
+                    <span>{timelineLabel}</span>
+                  </span>
                 </div>
               </div>
             );
@@ -235,135 +289,7 @@ export const SitesTab: React.FC<SitesTabProps> = ({
         </button>
       )}
 
-      {/* Site-Level Date Range & Timeline Filter Modal */}
-      {timelineModalSite && (
-        <div className="modal-backdrop" onClick={() => setTimelineModalSite(null)}>
-          <div className="site-timeline-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="site-modal-header">
-              <div className="modal-site-title">
-                <div className="modal-code-row">
-                  <span className="modal-code">{timelineModalSite.siteCode}</span>
-                  <span className="modal-mbu-badge">{timelineModalSite.mbu}</span>
-                </div>
-                <h3>{timelineModalSite.siteName}</h3>
-                <span className="timeline-modal-hint">Custom Timeline & Daily Outage Filter</span>
-              </div>
-              <button className="close-modal-btn" onClick={() => setTimelineModalSite(null)}>
-                <X size={18} />
-              </button>
-            </div>
-
-            {/* Date Pickers */}
-            <div className="date-range-picker-row">
-              <div className="date-input-group">
-                <label>From Date:</label>
-                <input
-                  type="date"
-                  className="corp-date-input"
-                  value={filterStartDate}
-                  onChange={(e) => {
-                    setFilterStartDate(e.target.value);
-                    setSelectedSingleDay(null);
-                  }}
-                />
-              </div>
-
-              <div className="date-input-group">
-                <label>To Date:</label>
-                <input
-                  type="date"
-                  className="corp-date-input"
-                  value={filterEndDate}
-                  onChange={(e) => {
-                    setFilterEndDate(e.target.value);
-                    setSelectedSingleDay(null);
-                  }}
-                />
-              </div>
-            </div>
-
-            {/* Quick Day-by-Day Selector Buttons */}
-            <div className="quick-days-selector-bar">
-              <span className="quick-days-lbl">Or Select Single Day:</span>
-              <div className="quick-days-scroll">
-                <button
-                  className={`day-pill ${selectedSingleDay === null ? 'active' : ''}`}
-                  onClick={() => setSelectedSingleDay(null)}
-                >
-                  Date Range
-                </button>
-                {timelineModalSite.dailyTimeline?.map((d) => {
-                  const dayNum = parseInt(d.date.split('-')[2] || '1', 10);
-                  const isDaySelected = selectedSingleDay === d.date;
-                  return (
-                    <button
-                      key={d.date}
-                      className={`day-pill ${isDaySelected ? 'active' : ''} ${d.hours > 5 ? 'day-heavy' : ''}`}
-                      onClick={() => {
-                        soundFX.playClick();
-                        setSelectedSingleDay(d.date);
-                      }}
-                    >
-                      Day {dayNum} ({d.hours}h)
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Filtered Range Result Card */}
-            {(() => {
-              const filteredStats = getSiteFilteredStats(timelineModalSite);
-              return (
-                <div className="filtered-range-card">
-                  <div className="range-score-row">
-                    <div>
-                      <span className="range-sub-lbl">
-                        {selectedSingleDay ? `Downtime on ${selectedSingleDay}` : `Downtime (${filterStartDate} to ${filterEndDate})`}
-                      </span>
-                      <div className="range-dt-large">{filteredStats.downtimeHours} hrs Down</div>
-                    </div>
-                    <div className="range-avail-badge">
-                      <span>{filteredStats.availability}% Avail</span>
-                    </div>
-                  </div>
-
-                  {/* Daily Outage Bar Breakdown */}
-                  <div className="daily-bars-container">
-                    <span className="daily-bars-title">Daily Outage Breakdown:</span>
-                    <div className="daily-bars-list">
-                      {filteredStats.dailyBars.map((b) => {
-                        const dayNum = parseInt(b.date.split('-')[2] || '1', 10);
-                        const barWidth = Math.min(100, Math.max(8, (b.hours / 24) * 100));
-                        return (
-                          <div key={b.date} className="daily-bar-row">
-                            <span className="bar-day-lbl">Aug {dayNum}</span>
-                            <div className="bar-track">
-                              <div
-                                className={`bar-fill ${b.hours > 8 ? 'bar-crit' : 'bar-warn'}`}
-                                style={{ width: `${barWidth}%` }}
-                              />
-                            </div>
-                            <span className="bar-hr-val">{b.hours}h</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-
-            <div className="site-modal-footer">
-              <button className="close-action-btn" onClick={() => setTimelineModalSite(null)}>
-                Done
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* In-Depth Site Intelligence Diagnostic Modal */}
+      {/* In-Depth Site Intelligence Diagnostic Modal with From-To Date Filters inside */}
       {selectedSite && (
         <div className="modal-backdrop" onClick={() => setSelectedSite(null)}>
           <div className="site-detail-modal" onClick={(e) => e.stopPropagation()}>
@@ -381,50 +307,147 @@ export const SitesTab: React.FC<SitesTabProps> = ({
               </button>
             </div>
 
-            {/* SLA Score & Status Card */}
-            <div className="site-sla-highlight-card">
-              <div className="sla-score-left">
-                <span className="sla-micro-lbl">SITE AVAILABILITY (SLA)</span>
-                <span className={`sla-large-score ${selectedSite.availability >= 99.0 ? 'text-engro-green' : 'text-coral'}`}>
-                  {selectedSite.availability}%
-                </span>
+            {/* In-Modal From-To Date Range Controls */}
+            <div className="site-modal-date-picker-bar">
+              <div className="modal-date-row">
+                <div className="modal-date-box">
+                  <label className="modal-date-lbl">
+                    <Clock size={11} className="text-engro-green" />
+                    <span>FROM:</span>
+                  </label>
+                  <input
+                    type="date"
+                    className="modal-date-input"
+                    value={siteModalSingleDay || siteModalFromDate}
+                    disabled={siteModalSingleDay !== null}
+                    onChange={(e) => {
+                      setSiteModalFromDate(e.target.value);
+                      setSiteModalSingleDay(null);
+                    }}
+                  />
+                </div>
+
+                <div className="modal-date-arrow">➔</div>
+
+                <div className="modal-date-box">
+                  <label className="modal-date-lbl">
+                    <Clock size={11} className="text-engro-green" />
+                    <span>TO:</span>
+                  </label>
+                  <input
+                    type="date"
+                    className="modal-date-input"
+                    value={siteModalSingleDay || siteModalToDate}
+                    disabled={siteModalSingleDay !== null}
+                    onChange={(e) => {
+                      setSiteModalToDate(e.target.value);
+                      setSiteModalSingleDay(null);
+                    }}
+                  />
+                </div>
               </div>
-              <div className="sla-grade-right">
-                {selectedSite.availability >= 99.0 ? (
-                  <div className="grade-pill grade-pass">
-                    <ShieldCheck size={14} />
-                    <span>SLA Benchmark Met</span>
-                  </div>
-                ) : (
-                  <div className="grade-pill grade-fail">
-                    <AlertTriangle size={14} />
-                    <span>Critical Outage Risk</span>
-                  </div>
-                )}
+
+              {/* Single Day Buttons inside site modal */}
+              <div className="site-modal-days-scroll">
+                <button
+                  className={`modal-day-pill ${siteModalSingleDay === null ? 'active' : ''}`}
+                  onClick={() => setSiteModalSingleDay(null)}
+                >
+                  Date Range
+                </button>
+                {selectedSite.dailyTimeline?.map((d) => {
+                  const dayNum = parseInt(d.date.split('-')[2] || '1', 10);
+                  const isSelected = siteModalSingleDay === d.date;
+                  return (
+                    <button
+                      key={d.date}
+                      className={`modal-day-pill ${isSelected ? 'active' : ''}`}
+                      onClick={() => {
+                        soundFX.playClick();
+                        setSiteModalSingleDay(d.date);
+                      }}
+                    >
+                      Day {dayNum} ({d.hours}h)
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
-            {/* Site Telemetry Stats Grid */}
-            <div className="site-modal-metrics-grid">
-              <div className="modal-stat-box">
-                <span className="stat-lbl">Cumulative Downtime</span>
-                <span className="stat-val text-coral">{selectedSite.totalDtHours.toLocaleString()}h</span>
-              </div>
+            {/* Computed Diagnostic Stats for chosen date range */}
+            {(() => {
+              const modalStats = getModalSiteStats(selectedSite);
+              const isPassing = modalStats.availability >= 99.0;
+              return (
+                <>
+                  {/* SLA Score & Status Card */}
+                  <div className="site-sla-highlight-card">
+                    <div className="sla-score-left">
+                      <span className="sla-micro-lbl">AVAILABILITY IN TIMELINE</span>
+                      <span className={`sla-large-score ${isPassing ? 'text-engro-green' : 'text-coral'}`}>
+                        {modalStats.availability}%
+                      </span>
+                    </div>
+                    <div className="sla-grade-right">
+                      {isPassing ? (
+                        <div className="grade-pill grade-pass">
+                          <ShieldCheck size={14} />
+                          <span>SLA Met in Range</span>
+                        </div>
+                      ) : (
+                        <div className="grade-pill grade-fail">
+                          <AlertTriangle size={14} />
+                          <span>Outage in Range</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
 
-              <div className="modal-stat-box">
-                <span className="stat-lbl">Alarms Logged</span>
-                <span className="stat-val">{selectedSite.incidentCount}</span>
-              </div>
+                  {/* Site Telemetry Stats Grid */}
+                  <div className="site-modal-metrics-grid">
+                    <div className="modal-stat-box">
+                      <span className="stat-lbl">Downtime in Range</span>
+                      <span className="stat-val text-coral">{modalStats.downtimeHours} hrs</span>
+                    </div>
 
-              <div className="modal-stat-box">
-                <span className="stat-lbl">Avg Alarm Duration</span>
-                <span className="stat-val">
-                  {selectedSite.incidentCount > 0
-                    ? (selectedSite.totalDtHours / selectedSite.incidentCount).toFixed(1)
-                    : 0}h
-                </span>
-              </div>
-            </div>
+                    <div className="modal-stat-box">
+                      <span className="stat-lbl">Reporting Days</span>
+                      <span className="stat-val">{modalStats.daysCount} Days</span>
+                    </div>
+
+                    <div className="modal-stat-box">
+                      <span className="stat-lbl">Alarms Logged</span>
+                      <span className="stat-val">{selectedSite.incidentCount}</span>
+                    </div>
+                  </div>
+
+                  {/* Daily Outage Bars for this site */}
+                  {modalStats.dailyBars.length > 0 && (
+                    <div className="site-daily-breakdown-section">
+                      <span className="breakdown-title">Day-by-Day Outage Hours:</span>
+                      <div className="site-bars-list">
+                        {modalStats.dailyBars.map((b) => {
+                          const dayNum = parseInt(b.date.split('-')[2] || '1', 10);
+                          const barWidth = Math.min(100, Math.max(8, (b.hours / 24) * 100));
+                          return (
+                            <div key={b.date} className="site-bar-row">
+                              <span className="s-day">Aug {dayNum}</span>
+                              <div className="s-track">
+                                <div
+                                  className={`s-fill ${b.hours > 8 ? 'crit' : 'warn'}`}
+                                  style={{ width: `${barWidth}%` }}
+                                />
+                              </div>
+                              <span className="s-hrs">{b.hours}h</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
 
             {/* Technical Specifications */}
             <div className="site-spec-box">
@@ -442,7 +465,7 @@ export const SitesTab: React.FC<SitesTabProps> = ({
               </div>
             </div>
 
-            {/* Top Root Causes for this Site with percentage share */}
+            {/* Top Root Causes for this Site */}
             <div className="site-modal-reasons-section">
               <div className="section-title-row">
                 <Zap size={14} className="text-amber" />
