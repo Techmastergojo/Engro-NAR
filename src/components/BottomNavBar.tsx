@@ -1,5 +1,6 @@
 import React from 'react';
-import { TabType } from '../types';
+import type { TabType } from '../types';
+
 import { LayoutDashboard, AlertTriangle, Cpu, FileSpreadsheet } from 'lucide-react';
 import { soundFX } from '../utils/soundEffects';
 

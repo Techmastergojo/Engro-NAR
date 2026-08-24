@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { OutageRecord } from '../types';
+import type { OutageRecord } from '../types';
+
 import { Search, Filter, AlertCircle, CheckCircle2, Clock, MapPin, Wrench } from 'lucide-react';
 import { soundFX } from '../utils/soundEffects';
 

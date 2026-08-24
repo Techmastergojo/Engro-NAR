@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { OutageRecord, TelecomStats } from '../types';
+import type { OutageRecord, TelecomStats } from '../types';
+
 import { generateSmartFacts, simulateWhatIf } from '../utils/analytics';
 import {
   Sparkles,

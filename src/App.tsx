@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { TabType, OutageRecord } from './types';
+import type { TabType, OutageRecord } from './types';
+
 import { REAL_ENGRO_DATA } from './utils/realData';
 import { calculateTelecomStats } from './utils/analytics';
 import { Header } from './components/Header';

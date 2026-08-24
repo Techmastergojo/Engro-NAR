@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
-import { OutageRecord } from '../types';
+import type { OutageRecord } from '../types';
+
 
 interface RawRow {
   [key: string]: unknown;

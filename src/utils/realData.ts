@@ -1,5 +1,5 @@
 import realDataJson from './realEngroData.json';
-import { OutageRecord } from '../types';
+import type { OutageRecord } from '../types';
 
 export interface EngroRealDataset {
   summary: {
@@ -14,7 +14,7 @@ export interface EngroRealDataset {
     mbu: string;
     totalDtHours: number;
     incidentCount: number;
-    reasons: Record<string, number>;
+    reasons: Record<string, unknown>;
   }[];
   topReasons: {
     reason: string;
@@ -35,4 +35,5 @@ export interface EngroRealDataset {
   sampleIncidents: OutageRecord[];
 }
 
-export const REAL_ENGRO_DATA: EngroRealDataset = realDataJson as EngroRealDataset;
+export const REAL_ENGRO_DATA: EngroRealDataset = realDataJson as unknown as EngroRealDataset;
+

@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { OutageRecord } from '../types';
+import type { OutageRecord } from '../types';
 import { parseExcelFile } from '../utils/excelParser';
 import { INITIAL_SAMPLE_RECORDS, ALTERNATE_STORM_DATASET } from '../utils/sampleData';
 import {
@@ -18,13 +18,13 @@ import { soundFX } from '../utils/soundEffects';
 
 interface ImportTabProps {
   onDataLoaded: (records: OutageRecord[], sourceTitle: string) => void;
-  currentRecordsCount: number;
+  currentRecordsCount?: number;
 }
 
 export const ImportTab: React.FC<ImportTabProps> = ({
-  onDataLoaded,
-  currentRecordsCount
+  onDataLoaded
 }) => {
+
   const [isDragging, setIsDragging] = useState(false);
   const [loading, setLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);

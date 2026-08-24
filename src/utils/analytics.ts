@@ -1,4 +1,5 @@
-import { OutageRecord, TelecomStats, AnomalyFact } from '../types';
+import type { OutageRecord, TelecomStats, AnomalyFact } from '../types';
+
 
 export function calculateTelecomStats(records: OutageRecord[]): TelecomStats {
   if (!records || records.length === 0) {

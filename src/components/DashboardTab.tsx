@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { OutageRecord, TelecomStats, TimelineFilter } from '../types';
+import type { OutageRecord, TelecomStats, TimelineFilter } from '../types';
+
 import {
   AreaChart,
   Area,

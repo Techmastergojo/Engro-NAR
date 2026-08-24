@@ -1,4 +1,5 @@
-import { OutageRecord } from '../types';
+import type { OutageRecord } from '../types';
+
 
 export const INITIAL_SAMPLE_RECORDS: OutageRecord[] = [
   {
