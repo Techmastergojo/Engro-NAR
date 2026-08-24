@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import type { UserRole, HistoricalPeriod } from '../types';
+import { GLOBAL_6_MONTH_NAR } from '../utils/periodStore';
 import {
   AreaChart,
   Area,
@@ -9,9 +10,10 @@ import {
   ResponsiveContainer,
   BarChart,
   Bar,
-  Cell
+  Cell,
+  ReferenceLine
 } from 'recharts';
-import { TrendingUp, BarChart2, PieChart, Layers } from 'lucide-react';
+import { TrendingUp, BarChart2, PieChart, Layers, ShieldCheck } from 'lucide-react';
 import { soundFX } from '../utils/soundEffects';
 
 interface GraphsTabProps {
@@ -20,19 +22,21 @@ interface GraphsTabProps {
 }
 
 export const GraphsTab: React.FC<GraphsTabProps> = ({ activePeriod }) => {
-  const [activeChart, setActiveChart] = useState<'timeline' | 'reasons' | 'mbus'>('timeline');
+  // Set 'nar' as the default first active chart!
+  const [activeChart, setActiveChart] = useState<'nar' | 'timeline' | 'reasons' | 'mbus'>('nar');
 
-  // Timeline chart data from active period
+  // Daily Outage Timeline chart data
   const timelineData = activePeriod.dailyTimeline.map((d) => {
     const day = parseInt(d.date.split('-')[2] || '1', 10);
     return {
       name: `Day ${day}`,
       hours: d.totalDtHours,
-      incidents: d.incidentCount
+      incidents: d.incidentCount,
+      narPercent: d.narPercent || 99.85
     };
   });
 
-  // Reasons chart data from active period
+  // Root Reasons chart data
   const reasonsData = activePeriod.topReasons.slice(0, 6).map((r) => ({
     name: r.reason.length > 14 ? `${r.reason.substring(0, 14)}...` : r.reason,
     fullName: r.reason,
@@ -40,21 +44,33 @@ export const GraphsTab: React.FC<GraphsTabProps> = ({ activePeriod }) => {
     incidents: r.incidentCount
   }));
 
-  // MBU chart data from active period
+  // MBU chart data
   const mbuData = activePeriod.mbuBreakdown.map((m) => ({
     name: m.mbu.replace('C4-', ''),
     mbu: m.mbu,
     hours: m.totalDtHours,
-    sites: m.siteCount
+    sites: m.siteCount,
+    avail: m.avgAvailability
   }));
 
   const chartColors = ['#00A859', '#0066CC', '#F7941D', '#E63946', '#8B5CF6', '#06D6A0'];
 
   return (
     <div className="tab-content graphs-content">
-      {/* Chart Selector Pills */}
+      {/* Chart Selector Pills (NAR is First) */}
       <div className="corp-card chart-switcher-bar">
         <div className="switcher-row">
+          <button
+            className={`switch-tab-btn ${activeChart === 'nar' ? 'active' : ''}`}
+            onClick={() => {
+              soundFX.playClick();
+              setActiveChart('nar');
+            }}
+          >
+            <ShieldCheck size={14} />
+            <span>NAR % Curve</span>
+          </button>
+
           <button
             className={`switch-tab-btn ${activeChart === 'timeline' ? 'active' : ''}`}
             onClick={() => {
@@ -63,7 +79,7 @@ export const GraphsTab: React.FC<GraphsTabProps> = ({ activePeriod }) => {
             }}
           >
             <TrendingUp size={14} />
-            <span>Daily Curve</span>
+            <span>Outage Hrs</span>
           </button>
 
           <button
@@ -85,17 +101,80 @@ export const GraphsTab: React.FC<GraphsTabProps> = ({ activePeriod }) => {
             }}
           >
             <Layers size={14} />
-            <span>MBU Clusters</span>
+            <span>MBUs</span>
           </button>
         </div>
       </div>
 
-      {/* Daily Outage Curve Chart */}
+      {/* 1. NAR % GRAPH (PLACED BEFORE OUTAGE HOURS GRAPH) */}
+      {activeChart === 'nar' && (
+        <div className="corp-card chart-main-card">
+          <div className="card-header-row">
+            <div className="header-title-group">
+              <ShieldCheck size={16} className="text-engro-green" />
+              <h4>Network Availability Rate (NAR %) Trajectory</h4>
+            </div>
+            <span className="badge-meta">SLA Benchmark 99.90%</span>
+          </div>
+
+          <div className="chart-wrapper" style={{ width: '100%', height: 220 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={GLOBAL_6_MONTH_NAR} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="narAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#00A859" stopOpacity={0.4} />
+                    <stop offset="95%" stopColor="#00A859" stopOpacity={0.0} />
+                  </linearGradient>
+                </defs>
+                <XAxis dataKey="monthLabel" stroke="#64748B" fontSize={9.5} tickLine={false} />
+                <YAxis domain={[99.70, 100]} stroke="#64748B" fontSize={9.5} tickLine={false} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: '#0F172A',
+                    borderColor: '#00A859',
+                    borderRadius: '6px',
+                    color: '#F8FAFC',
+                    fontSize: '11.5px'
+                  }}
+                  formatter={(val) => [`${val}% NAR`, 'Network Availability']}
+                />
+                <ReferenceLine y={99.90} stroke="#F7941D" strokeDasharray="3 3" label={{ value: 'Target 99.90%', fill: '#F7941D', fontSize: 9 }} />
+                <Area
+                  type="monotone"
+                  dataKey="narPercent"
+                  stroke="#00A859"
+                  strokeWidth={2.5}
+                  fillOpacity={1}
+                  fill="url(#narAreaGrad)"
+                  name="NAR %"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="nar-chart-footer-row">
+            <div className="footer-stat">
+              <span className="fs-lbl">Current Month NAR</span>
+              <strong className="fs-val text-engro-green">99.88%</strong>
+            </div>
+            <div className="footer-stat">
+              <span className="fs-lbl">6-Month High</span>
+              <strong className="fs-val">99.88% (Aug)</strong>
+            </div>
+            <div className="footer-stat">
+              <span className="fs-lbl">SLA Compliance</span>
+              <strong className="fs-val text-amber">99.2% Sites</strong>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 2. DAILY OUTAGE HOURS GRAPH */}
       {activeChart === 'timeline' && (
         <div className="corp-card chart-main-card">
           <div className="card-header-row">
             <div className="header-title-group">
-              <TrendingUp size={16} className="text-engro-green" />
+              <TrendingUp size={16} className="text-engro-blue" />
               <h4>Daily Downtime Curve ({activePeriod.name})</h4>
             </div>
             <span className="badge-meta">{timelineData.length} Reporting Days</span>
@@ -105,9 +184,9 @@ export const GraphsTab: React.FC<GraphsTabProps> = ({ activePeriod }) => {
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={timelineData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <defs>
-                  <linearGradient id="corpGreenGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#00A859" stopOpacity={0.4} />
-                    <stop offset="95%" stopColor="#00A859" stopOpacity={0.0} />
+                  <linearGradient id="corpBlueGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#0066CC" stopOpacity={0.4} />
+                    <stop offset="95%" stopColor="#0066CC" stopOpacity={0.0} />
                   </linearGradient>
                 </defs>
                 <XAxis dataKey="name" stroke="#64748B" fontSize={9.5} tickLine={false} />
@@ -115,7 +194,7 @@ export const GraphsTab: React.FC<GraphsTabProps> = ({ activePeriod }) => {
                 <Tooltip
                   contentStyle={{
                     backgroundColor: '#0F172A',
-                    borderColor: '#00A859',
+                    borderColor: '#0066CC',
                     borderRadius: '6px',
                     color: '#F8FAFC',
                     fontSize: '11.5px'
@@ -124,10 +203,10 @@ export const GraphsTab: React.FC<GraphsTabProps> = ({ activePeriod }) => {
                 <Area
                   type="monotone"
                   dataKey="hours"
-                  stroke="#00A859"
+                  stroke="#0066CC"
                   strokeWidth={2.5}
                   fillOpacity={1}
-                  fill="url(#corpGreenGrad)"
+                  fill="url(#corpBlueGrad)"
                   name="Downtime (Hours)"
                 />
               </AreaChart>
@@ -136,12 +215,12 @@ export const GraphsTab: React.FC<GraphsTabProps> = ({ activePeriod }) => {
         </div>
       )}
 
-      {/* Root Cause Distribution Chart */}
+      {/* 3. ROOT CAUSES GRAPH */}
       {activeChart === 'reasons' && (
         <div className="corp-card chart-main-card">
           <div className="card-header-row">
             <div className="header-title-group">
-              <BarChart2 size={16} className="text-engro-blue" />
+              <BarChart2 size={16} className="text-amber" />
               <h4>Major Root Causes ({activePeriod.name})</h4>
             </div>
             <span className="badge-meta">Top Drivers</span>
@@ -172,12 +251,12 @@ export const GraphsTab: React.FC<GraphsTabProps> = ({ activePeriod }) => {
         </div>
       )}
 
-      {/* MBU Distribution Chart */}
+      {/* 4. MBU CLUSTERS GRAPH */}
       {activeChart === 'mbus' && (
         <div className="corp-card chart-main-card">
           <div className="card-header-row">
             <div className="header-title-group">
-              <Layers size={16} className="text-amber" />
+              <Layers size={16} className="text-engro-green" />
               <h4>Cumulative Downtime by MBU</h4>
             </div>
             <span className="badge-meta">8 Clusters</span>

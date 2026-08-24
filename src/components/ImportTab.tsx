@@ -76,6 +76,7 @@ export const ImportTab: React.FC<ImportTabProps> = ({
             totalDtHours: 0,
             incidentCount: 0,
             availability: r.availability,
+            nar6Months: [],
             topReasons: [],
             dailyTimeline: []
           };
@@ -130,7 +131,11 @@ export const ImportTab: React.FC<ImportTabProps> = ({
         incidentCount: r.incidentCount
       })).sort((a, b) => b.totalDtHours - a.totalDtHours);
 
-      const dailyTimelineList = Object.values(dailyMap).sort((a, b) => a.date.localeCompare(b.date));
+      const dailyTimelineList = Object.values(dailyMap).map(d => ({
+        ...d,
+        narPercent: Math.max(90, Number((100 - (d.totalDtHours / Math.max(1, allSitesList.length * 24)) * 100).toFixed(2)))
+      })).sort((a, b) => a.date.localeCompare(b.date));
+
 
       const newPeriodId = `period-${Date.now()}`;
       const periodName = periodNameInput.trim() || file.name.replace(/\.[^/.]+$/, '');

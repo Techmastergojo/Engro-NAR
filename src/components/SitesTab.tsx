@@ -12,8 +12,18 @@ import {
   Sparkles,
   Calendar,
   SlidersHorizontal,
-  Clock
+  TrendingUp
 } from 'lucide-react';
+
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  ReferenceLine
+} from 'recharts';
 import { soundFX } from '../utils/soundEffects';
 
 interface SitesTabProps {
@@ -36,12 +46,13 @@ export const SitesTab: React.FC<SitesTabProps> = ({
   const [selectedSite, setSelectedSite] = useState<SiteCatalogItem | null>(null);
   const [pageLimit, setPageLimit] = useState<number>(25);
 
-  // Site-specific internal Date Range Filter modal
+  // Site Modal NAR View Mode: '6months' | 'daily'
+  const [siteModalNarMode, setSiteModalNarMode] = useState<'6months' | 'daily'>('6months');
+  const [siteModalSelectedDay, setSiteModalSelectedDay] = useState<string>('all');
+
+  // Custom date range state for site modal
   const [siteModalFromDate, setSiteModalFromDate] = useState<string>(timelineFilter.startDate);
   const [siteModalToDate, setSiteModalToDate] = useState<string>(timelineFilter.endDate);
-  const [siteModalSingleDay, setSiteModalSingleDay] = useState<string | null>(
-    timelineFilter.mode === 'single' ? timelineFilter.singleDate || null : null
-  );
 
   const mbuList = useMemo(() => {
     const set = new Set(activePeriod.allSites.map((s) => s.mbu).filter(Boolean));
@@ -64,12 +75,12 @@ export const SitesTab: React.FC<SitesTabProps> = ({
 
       const rangeDtHours = filteredDays.reduce((sum, d) => sum + d.hours, 0);
       const totalPossibleHours = Math.max(1, filteredDays.length) * 24;
-      const rangeAvail = Math.max(70, Number(((totalPossibleHours - rangeDtHours) / totalPossibleHours * 100).toFixed(2)));
+      const rangeNar = Math.max(70, Number(((totalPossibleHours - rangeDtHours) / totalPossibleHours * 100).toFixed(2)));
 
       return {
         ...site,
         totalDtHours: Number(rangeDtHours.toFixed(1)),
-        availability: rangeAvail,
+        availability: rangeNar,
         rangeDaysCount: filteredDays.length
       };
     });
@@ -91,7 +102,7 @@ export const SitesTab: React.FC<SitesTabProps> = ({
 
   const displayedSites = filteredSites.slice(0, pageLimit);
 
-  // Compute stats for the diagnostic modal for custom chosen dates
+  // Compute stats for modal
   const getModalSiteStats = (site: SiteCatalogItem) => {
     if (!site.dailyTimeline || site.dailyTimeline.length === 0) {
       return {
@@ -103,21 +114,21 @@ export const SitesTab: React.FC<SitesTabProps> = ({
     }
 
     const filteredDays = site.dailyTimeline.filter((d) => {
-      if (siteModalSingleDay) {
-        return d.date === siteModalSingleDay;
+      if (siteModalSelectedDay !== 'all') {
+        return d.date === siteModalSelectedDay;
       }
       return d.date >= siteModalFromDate && d.date <= siteModalToDate;
     });
 
     const rangeDt = filteredDays.reduce((sum, d) => sum + d.hours, 0);
-    const rangeDays = siteModalSingleDay ? 1 : Math.max(1, filteredDays.length);
+    const rangeDays = siteModalSelectedDay !== 'all' ? 1 : Math.max(1, filteredDays.length);
     const totalPossibleHours = rangeDays * 24;
-    const rangeAvail = Math.max(70, Number(((totalPossibleHours - rangeDt) / totalPossibleHours * 100).toFixed(2)));
+    const rangeNar = Math.max(70, Number(((totalPossibleHours - rangeDt) / totalPossibleHours * 100).toFixed(2)));
 
     return {
       downtimeHours: Number(rangeDt.toFixed(1)),
       daysCount: rangeDays,
-      availability: rangeAvail,
+      availability: rangeNar,
       dailyBars: filteredDays
     };
   };
@@ -219,7 +230,7 @@ export const SitesTab: React.FC<SitesTabProps> = ({
         <span className="sort-tag">Ranked by Outage Hours</span>
       </div>
 
-      {/* Sites List */}
+      {/* Sites List (Displaying Site NAR %) */}
       <div className="sites-catalog-list">
         {displayedSites.length === 0 ? (
           <div className="corp-card empty-search-card">
@@ -237,9 +248,10 @@ export const SitesTab: React.FC<SitesTabProps> = ({
                 onClick={() => {
                   soundFX.playClick();
                   setSelectedSite(site);
+                  setSiteModalNarMode('6months');
+                  setSiteModalSelectedDay('all');
                   setSiteModalFromDate(timelineFilter.startDate);
                   setSiteModalToDate(timelineFilter.endDate);
-                  setSiteModalSingleDay(timelineFilter.mode === 'single' ? timelineFilter.singleDate || null : null);
                 }}
               >
                 <div className="site-row-left">
@@ -260,9 +272,9 @@ export const SitesTab: React.FC<SitesTabProps> = ({
                 </div>
 
                 <div className="site-row-right">
-                  <span className="site-dt-text">{site.totalDtHours.toLocaleString()}h</span>
+                  <span className="site-dt-text">{site.totalDtHours.toLocaleString()}h DT</span>
                   <span className={`site-avail-badge ${isGood ? 'avail-good' : 'avail-low'}`}>
-                    {site.availability}%
+                    {site.availability}% NAR
                   </span>
                   
                   <span className="site-timeline-indicator">
@@ -289,7 +301,7 @@ export const SitesTab: React.FC<SitesTabProps> = ({
         </button>
       )}
 
-      {/* In-Depth Site Intelligence Diagnostic Modal with From-To Date Filters inside */}
+      {/* In-Depth Site Diagnostic Modal with 6-Month NAR & Everyday Dropdown */}
       {selectedSite && (
         <div className="modal-backdrop" onClick={() => setSelectedSite(null)}>
           <div className="site-detail-modal" onClick={(e) => e.stopPropagation()}>
@@ -307,127 +319,153 @@ export const SitesTab: React.FC<SitesTabProps> = ({
               </button>
             </div>
 
-            {/* In-Modal From-To Date Range Controls */}
-            <div className="site-modal-date-picker-bar">
-              <div className="modal-date-row">
-                <div className="modal-date-box">
-                  <label className="modal-date-lbl">
-                    <Clock size={11} className="text-engro-green" />
-                    <span>FROM:</span>
-                  </label>
-                  <input
-                    type="date"
-                    className="modal-date-input"
-                    value={siteModalSingleDay || siteModalFromDate}
-                    disabled={siteModalSingleDay !== null}
-                    onChange={(e) => {
-                      setSiteModalFromDate(e.target.value);
-                      setSiteModalSingleDay(null);
-                    }}
-                  />
-                </div>
-
-                <div className="modal-date-arrow">➔</div>
-
-                <div className="modal-date-box">
-                  <label className="modal-date-lbl">
-                    <Clock size={11} className="text-engro-green" />
-                    <span>TO:</span>
-                  </label>
-                  <input
-                    type="date"
-                    className="modal-date-input"
-                    value={siteModalSingleDay || siteModalToDate}
-                    disabled={siteModalSingleDay !== null}
-                    onChange={(e) => {
-                      setSiteModalToDate(e.target.value);
-                      setSiteModalSingleDay(null);
-                    }}
-                  />
-                </div>
+            {/* SITE NAR VIEW TOGGLE: 6 Months vs Everyday */}
+            <div className="site-modal-nar-toggle-row">
+              <div className="site-nar-title-block">
+                <TrendingUp size={14} className="text-engro-green" />
+                <span className="site-nar-title">SITE NAR TELEMETRY</span>
               </div>
-
-              {/* Single Day Buttons inside site modal */}
-              <div className="site-modal-days-scroll">
+              <div className="nar-mode-pills">
                 <button
-                  className={`modal-day-pill ${siteModalSingleDay === null ? 'active' : ''}`}
-                  onClick={() => setSiteModalSingleDay(null)}
+                  className={`nar-mode-btn ${siteModalNarMode === '6months' ? 'active' : ''}`}
+                  onClick={() => {
+                    soundFX.playClick();
+                    setSiteModalNarMode('6months');
+                  }}
                 >
-                  Date Range
+                  6 Months Trend
                 </button>
-                {selectedSite.dailyTimeline?.map((d) => {
-                  const dayNum = parseInt(d.date.split('-')[2] || '1', 10);
-                  const isSelected = siteModalSingleDay === d.date;
-                  return (
-                    <button
-                      key={d.date}
-                      className={`modal-day-pill ${isSelected ? 'active' : ''}`}
-                      onClick={() => {
-                        soundFX.playClick();
-                        setSiteModalSingleDay(d.date);
-                      }}
-                    >
-                      Day {dayNum} ({d.hours}h)
-                    </button>
-                  );
-                })}
+                <button
+                  className={`nar-mode-btn ${siteModalNarMode === 'daily' ? 'active' : ''}`}
+                  onClick={() => {
+                    soundFX.playClick();
+                    setSiteModalNarMode('daily');
+                  }}
+                >
+                  Daily Breakdown
+                </button>
               </div>
             </div>
 
-            {/* Computed Diagnostic Stats for chosen date range */}
-            {(() => {
-              const modalStats = getModalSiteStats(selectedSite);
-              const isPassing = modalStats.availability >= 99.0;
-              return (
-                <>
-                  {/* SLA Score & Status Card */}
-                  <div className="site-sla-highlight-card">
-                    <div className="sla-score-left">
-                      <span className="sla-micro-lbl">AVAILABILITY IN TIMELINE</span>
-                      <span className={`sla-large-score ${isPassing ? 'text-engro-green' : 'text-coral'}`}>
-                        {modalStats.availability}%
-                      </span>
-                    </div>
-                    <div className="sla-grade-right">
-                      {isPassing ? (
-                        <div className="grade-pill grade-pass">
-                          <ShieldCheck size={14} />
-                          <span>SLA Met in Range</span>
-                        </div>
-                      ) : (
-                        <div className="grade-pill grade-fail">
-                          <AlertTriangle size={14} />
-                          <span>Outage in Range</span>
-                        </div>
-                      )}
-                    </div>
+            {/* 6-MONTH SITE NAR VIEW (DEFAULT) */}
+            {siteModalNarMode === '6months' ? (
+              <div className="site-modal-6months-box">
+                <div className="site-sla-highlight-card">
+                  <div className="sla-score-left">
+                    <span className="sla-micro-lbl">CURRENT MONTH NAR</span>
+                    <span className={`sla-large-score ${selectedSite.availability >= 99.0 ? 'text-engro-green' : 'text-coral'}`}>
+                      {selectedSite.availability}%
+                    </span>
                   </div>
-
-                  {/* Site Telemetry Stats Grid */}
-                  <div className="site-modal-metrics-grid">
-                    <div className="modal-stat-box">
-                      <span className="stat-lbl">Downtime in Range</span>
-                      <span className="stat-val text-coral">{modalStats.downtimeHours} hrs</span>
-                    </div>
-
-                    <div className="modal-stat-box">
-                      <span className="stat-lbl">Reporting Days</span>
-                      <span className="stat-val">{modalStats.daysCount} Days</span>
-                    </div>
-
-                    <div className="modal-stat-box">
-                      <span className="stat-lbl">Alarms Logged</span>
-                      <span className="stat-val">{selectedSite.incidentCount}</span>
-                    </div>
+                  <div className="sla-grade-right">
+                    {selectedSite.availability >= 99.0 ? (
+                      <div className="grade-pill grade-pass">
+                        <ShieldCheck size={14} />
+                        <span>SLA Compliant</span>
+                      </div>
+                    ) : (
+                      <div className="grade-pill grade-fail">
+                        <AlertTriangle size={14} />
+                        <span>High Outage Risk</span>
+                      </div>
+                    )}
                   </div>
+                </div>
 
-                  {/* Daily Outage Bars for this site */}
-                  {modalStats.dailyBars.length > 0 && (
-                    <div className="site-daily-breakdown-section">
-                      <span className="breakdown-title">Day-by-Day Outage Hours:</span>
+                {/* 6-Month Site Chart */}
+                <div className="chart-wrapper" style={{ width: '100%', height: 140, marginTop: 6 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={selectedSite.nar6Months || []} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="siteNarGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#00A859" stopOpacity={0.4} />
+                          <stop offset="95%" stopColor="#00A859" stopOpacity={0.0} />
+                        </linearGradient>
+                      </defs>
+                      <XAxis dataKey="monthLabel" stroke="#64748B" fontSize={9} tickLine={false} />
+                      <YAxis domain={[98.5, 100]} stroke="#64748B" fontSize={9} tickLine={false} />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: '#0F172A',
+                          borderColor: '#00A859',
+                          borderRadius: '6px',
+                          color: '#F8FAFC',
+                          fontSize: '10.5px'
+                        }}
+                        formatter={(val) => [`${val}% NAR`, 'Site Availability']}
+                      />
+                      <ReferenceLine y={99.90} stroke="#F7941D" strokeDasharray="3 3" />
+                      <Area
+                        type="monotone"
+                        dataKey="narPercent"
+                        stroke="#00A859"
+                        strokeWidth={2}
+                        fillOpacity={1}
+                        fill="url(#siteNarGrad)"
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* 6-Month Mini Pills */}
+                <div className="site-6m-pills-row">
+                  {selectedSite.nar6Months?.map((m) => (
+                    <div key={m.monthKey} className="site-6m-pill">
+                      <span className="p-lbl">{m.monthLabel.split(' ')[0]}</span>
+                      <strong className="p-val">{m.narPercent}%</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              /* DAILY BREAKDOWN WITH DAY DROPDOWN */
+              <div className="site-modal-daily-box">
+                <div className="site-day-select-group">
+                  <label>Select Day to Inspect NAR:</label>
+                  <select
+                    className="nar-styled-select"
+                    value={siteModalSelectedDay}
+                    onChange={(e) => {
+                      soundFX.playClick();
+                      setSiteModalSelectedDay(e.target.value);
+                    }}
+                  >
+                    <option value="all">Every Day Overview (Full Month)</option>
+                    {selectedSite.dailyTimeline?.map((d) => {
+                      const dayNum = parseInt(d.date.split('-')[2] || '1', 10);
+                      const dayNar = Number(((24 - Math.min(24, d.hours)) / 24 * 100).toFixed(2));
+                      return (
+                        <option key={d.date} value={d.date}>
+                          Aug {dayNum} ➔ {dayNar}% NAR ({d.hours}h DT)
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+
+                {/* Daily Computed Stats */}
+                {(() => {
+                  const modalStats = getModalSiteStats(selectedSite);
+                  return (
+                    <div className="site-daily-computed-card">
+                      <div className="computed-score-row">
+                        <div>
+                          <span className="c-sub">
+                            {siteModalSelectedDay === 'all' ? 'August 2026 Overall' : `Day ${siteModalSelectedDay.split('-')[2]} NAR`}
+                          </span>
+                          <div className="c-val-large">{modalStats.availability}% NAR</div>
+                        </div>
+                        <div className="c-dt-box">
+                          <span className="c-dt-num">{modalStats.downtimeHours}h</span>
+                          <span className="c-dt-lbl">Downtime</span>
+                        </div>
+                      </div>
+
+                      {/* Everyday Bar Breakdown */}
                       <div className="site-bars-list">
                         {modalStats.dailyBars.map((b) => {
                           const dayNum = parseInt(b.date.split('-')[2] || '1', 10);
+                          const dayNar = Number(((24 - Math.min(24, b.hours)) / 24 * 100).toFixed(2));
                           const barWidth = Math.min(100, Math.max(8, (b.hours / 24) * 100));
                           return (
                             <div key={b.date} className="site-bar-row">
@@ -438,16 +476,16 @@ export const SitesTab: React.FC<SitesTabProps> = ({
                                   style={{ width: `${barWidth}%` }}
                                 />
                               </div>
-                              <span className="s-hrs">{b.hours}h</span>
+                              <span className="s-hrs">{dayNar}% NAR</span>
                             </div>
                           );
                         })}
                       </div>
                     </div>
-                  )}
-                </>
-              );
-            })()}
+                  );
+                })()}
+              </div>
+            )}
 
             {/* Technical Specifications */}
             <div className="site-spec-box">

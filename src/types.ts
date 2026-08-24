@@ -9,6 +9,14 @@ export type UserRole =
   | 'C4-WZD-07'
   | 'C4-MBD-08';
 
+export interface MonthlyNarRecord {
+  monthKey: string; // e.g. '2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08'
+  monthLabel: string; // e.g. 'Mar 2026', 'Apr 2026', 'Aug 2026'
+  narPercent: number; // e.g. 99.84
+  totalDowntimeHours: number;
+  totalAlarms: number;
+}
+
 export interface SiteCatalogItem {
   siteCode: string;
   siteName: string;
@@ -18,9 +26,10 @@ export interface SiteCatalogItem {
   priority: string;
   totalDtHours: number;
   incidentCount: number;
-  availability: number;
+  availability: number; // Current NAR %
+  nar6Months: MonthlyNarRecord[]; // 6-Month NAR history for this site
   topReasons: { reason: string; hours: number }[];
-  dailyTimeline: { date: string; hours: number }[];
+  dailyTimeline: { date: string; hours: number; narPercent?: number }[];
 }
 
 export interface OutageRecord {
@@ -78,6 +87,7 @@ export interface DailySummary {
   date: string;
   totalDtHours: number;
   incidentCount: number;
+  narPercent: number; // Daily NAR %
   mbus: Record<string, number>;
 }
 
@@ -88,6 +98,7 @@ export interface HistoricalPeriod {
   sitesCount: number;
   totalDtHours: number;
   avgAvailability: number;
+  nar6Months?: MonthlyNarRecord[]; // Global 6-Month NAR series
   allSites: SiteCatalogItem[];
   topReasons: ReasonSummary[];
   mbuBreakdown: MbuSummary[];
@@ -97,8 +108,8 @@ export interface HistoricalPeriod {
 
 export interface GlobalTimelineFilter {
   mode: 'all' | 'custom' | 'single';
-  startDate: string; // YYYY-MM-DD (From Date)
-  endDate: string; // YYYY-MM-DD (To Date)
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
   singleDate?: string;
 }
 
