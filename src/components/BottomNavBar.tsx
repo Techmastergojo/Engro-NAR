@@ -1,53 +1,49 @@
 import React from 'react';
 import type { TabType } from '../types';
-
-import { LayoutDashboard, AlertTriangle, Cpu, FileSpreadsheet } from 'lucide-react';
+import { LayoutDashboard, BarChart3, Search, FileSpreadsheet } from 'lucide-react';
 import { soundFX } from '../utils/soundEffects';
 
 interface BottomNavBarProps {
   activeTab: TabType;
   onChangeTab: (tab: TabType) => void;
-  activeIncidentsCount: number;
 }
 
 export const BottomNavBar: React.FC<BottomNavBarProps> = ({
   activeTab,
-  onChangeTab,
-  activeIncidentsCount
+  onChangeTab
 }) => {
-  const tabs: { id: TabType; label: string; icon: React.ReactNode; badge?: number }[] = [
+  const tabs: { id: TabType; label: string; icon: React.ReactNode }[] = [
     {
       id: 'dashboard',
       label: 'Dashboard',
-      icon: <LayoutDashboard size={20} />
+      icon: <LayoutDashboard size={19} />
     },
     {
-      id: 'outages',
-      label: 'Outages',
-      icon: <AlertTriangle size={20} />,
-      badge: activeIncidentsCount > 0 ? activeIncidentsCount : undefined
+      id: 'graphs',
+      label: 'Graphs',
+      icon: <BarChart3 size={19} />
     },
     {
-      id: 'insights',
-      label: 'Smart AI',
-      icon: <Cpu size={20} />
+      id: 'sites',
+      label: 'Site Intel',
+      icon: <Search size={19} />
     },
     {
       id: 'import',
-      label: 'Excel Hub',
-      icon: <FileSpreadsheet size={20} />
+      label: 'Reports',
+      icon: <FileSpreadsheet size={19} />
     }
   ];
 
   return (
-    <nav className="bottom-nav-bar" role="navigation" aria-label="Main Navigation">
+    <nav className="corporate-nav-bar" role="navigation" aria-label="Main Tabs">
       {tabs.map((tab) => {
         const isActive = activeTab === tab.id;
         return (
           <button
             key={tab.id}
-            id={`nav-tab-${tab.id}`}
-            className={`nav-tab-item ${isActive ? 'active' : ''}`}
+            id={`nav-${tab.id}`}
+            className={`corp-tab-btn ${isActive ? 'active' : ''}`}
             onClick={() => {
               if (!isActive) {
                 soundFX.playTab();
@@ -55,14 +51,9 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
               }
             }}
           >
-            <div className="tab-icon-wrapper">
-              {tab.icon}
-              {tab.badge !== undefined && (
-                <span className="tab-badge-pill">{tab.badge}</span>
-              )}
-            </div>
-            <span className="tab-label">{tab.label}</span>
-            {isActive && <div className="tab-active-glow-bar" />}
+            <div className="tab-icon">{tab.icon}</div>
+            <span className="tab-text">{tab.label}</span>
+            {isActive && <div className="tab-indicator" />}
           </button>
         );
       })}

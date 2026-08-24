@@ -1,17 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { EngroLogo } from './EngroLogo';
-import { Volume2, VolumeX, Sparkles, RefreshCw } from 'lucide-react';
+import { UserCheck, Volume2, VolumeX } from 'lucide-react';
+import type { UserRole } from '../types';
 import { soundFX } from '../utils/soundEffects';
 
 interface HeaderProps {
-  onResetData: () => void;
-  activeCount: number;
+  currentRole: UserRole;
+  onOpenRoleSelector: () => void;
   overallAvailability: number;
 }
 
 export const Header: React.FC<HeaderProps> = ({
-  onResetData,
-  activeCount,
+  currentRole,
+  onOpenRoleSelector,
   overallAvailability
 }) => {
   const [soundOn, setSoundOn] = useState(soundFX.isEnabled());
@@ -32,54 +33,48 @@ export const Header: React.FC<HeaderProps> = ({
     setSoundOn(newState);
   };
 
-  const isHealthy = overallAvailability >= 99.9;
+  const isHealthy = overallAvailability >= 99.0;
 
   return (
-    <header className="app-header">
+    <header className="corporate-header">
       <div className="header-top-row">
-        <EngroLogo size="medium" animated={true} />
+        <EngroLogo size="medium" />
 
-        <div className="header-controls">
-          {/* Sound Toggle */}
+        <div className="header-right-controls">
+          {/* Active Role Badge (Clickable to switch) */}
           <button
-            className={`control-btn ${soundOn ? 'active' : ''}`}
-            onClick={handleSoundToggle}
-            title={soundOn ? 'Mute sound effects' : 'Enable sound effects'}
-          >
-            {soundOn ? <Volume2 size={16} /> : <VolumeX size={16} />}
-          </button>
-
-          {/* Quick Demo Reset */}
-          <button
-            className="control-btn"
+            className="role-switch-badge"
             onClick={() => {
               soundFX.playClick();
-              onResetData();
+              onOpenRoleSelector();
             }}
-            title="Reload Sample Telecom Network"
+            title="Click to Switch Role / Cluster"
           >
-            <RefreshCw size={15} />
+            <UserCheck size={13} />
+            <span>{currentRole === 'admin' ? 'Executive Admin' : currentRole}</span>
+          </button>
+
+          {/* Sound Toggle */}
+          <button
+            className={`header-icon-btn ${soundOn ? 'active' : ''}`}
+            onClick={handleSoundToggle}
+            title={soundOn ? 'Mute sound' : 'Enable sound'}
+          >
+            {soundOn ? <Volume2 size={15} /> : <VolumeX size={15} />}
           </button>
         </div>
       </div>
 
-      {/* Real-time Telemetry Status Bar */}
-      <div className="telemetry-bar">
-        <div className="live-pill">
-          <span className="live-dot" />
-          <span className="live-text">NOC LIVE</span>
-          <span className="live-clock">{timeStr}</span>
+      {/* Corporate Telemetry Sub-bar */}
+      <div className="header-sub-bar">
+        <div className="live-status-group">
+          <span className="live-pulse-dot" />
+          <span className="live-cluster-text">NOC LIVE</span>
+          <span className="live-clock-text">{timeStr}</span>
         </div>
 
-        <div className="telemetry-badges">
-          <div className={`status-chip ${isHealthy ? 'chip-green' : 'chip-warning'}`}>
-            <Sparkles size={12} />
-            <span>{overallAvailability}% SLA</span>
-          </div>
-
-          <div className={`status-chip ${activeCount > 0 ? 'chip-red' : 'chip-green'}`}>
-            <span>{activeCount} Outages</span>
-          </div>
+        <div className={`sla-status-pill ${isHealthy ? 'sla-good' : 'sla-warning'}`}>
+          <span>SLA: {overallAvailability}%</span>
         </div>
       </div>
     </header>

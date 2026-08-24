@@ -1,109 +1,82 @@
-import React, { useState, useEffect } from 'react';
-import type { TabType, OutageRecord } from './types';
+import React, { useState } from 'react';
 
+import type { TabType, UserRole } from './types';
 import { REAL_ENGRO_DATA } from './utils/realData';
-import { calculateTelecomStats } from './utils/analytics';
 import { Header } from './components/Header';
 import { BottomNavBar } from './components/BottomNavBar';
 import { DashboardTab } from './components/DashboardTab';
-import { OutagesTab } from './components/OutagesTab';
-import { InsightsTab } from './components/InsightsTab';
+import { GraphsTab } from './components/GraphsTab';
+import { SitesTab } from './components/SitesTab';
 import { ImportTab } from './components/ImportTab';
+import { RoleSelectorModal } from './components/RoleSelectorModal';
 import './App.css';
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
-  const [records, setRecords] = useState<OutageRecord[]>(() => {
-    const saved = localStorage.getItem('engro_nar_real_records');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
-        }
-      } catch {
-        // fallback
-      }
-    }
-    return REAL_ENGRO_DATA.sampleIncidents;
+  const [currentRole, setCurrentRole] = useState<UserRole>(() => {
+    const saved = localStorage.getItem('engro_user_role');
+    return (saved as UserRole) || 'admin';
   });
 
-  // Persist to local storage
-  useEffect(() => {
-    try {
-      localStorage.setItem('engro_nar_real_records', JSON.stringify(records));
-    } catch {
-      // ignore
-    }
-  }, [records]);
+  const [showRoleModal, setShowRoleModal] = useState<boolean>(() => {
+    return localStorage.getItem('engro_user_role') === null;
+  });
 
-  const stats = calculateTelecomStats(records);
+  const [siteSearchQuery, setSiteSearchQuery] = useState<string>('');
 
-  const handleResetData = () => {
-    setRecords(REAL_ENGRO_DATA.sampleIncidents);
+  const handleSelectRole = (role: UserRole) => {
+    setCurrentRole(role);
+    localStorage.setItem('engro_user_role', role);
+    setShowRoleModal(false);
   };
 
-  const handleDataLoaded = (newRecords: OutageRecord[]) => {
-    setRecords(newRecords);
-    setActiveTab('dashboard');
+  const handleNavigateToSites = (query: string = '') => {
+    setSiteSearchQuery(query);
+    setActiveTab('sites');
   };
 
-  const handleToggleStatus = (id: string) => {
-    setRecords((prev) =>
-      prev.map((r) => {
-        if (r.id === id) {
-          const nextStatus = r.status === 'Resolved' ? 'Active' : 'Resolved';
-          return { ...r, status: nextStatus };
-        }
-        return r;
-      })
-    );
-  };
+  const overallAvailability = REAL_ENGRO_DATA.summary.avgAvailability;
 
   return (
-    <div className="mobile-viewport-shell">
-      {/* Ambient Animated Glow Mesh Background */}
-      <div className="ambient-mesh-bg">
-        <div className="ambient-orb orb-1" />
-        <div className="ambient-orb orb-2" />
-        <div className="ambient-orb orb-3" />
-      </div>
+    <div className="corporate-viewport-shell">
+      {/* Background Corporate Glow */}
+      <div className="corporate-bg-mesh" />
 
-      {/* Main Mobile App Frame */}
-      <div className="mobile-app-container">
+      {/* Main Corporate Mobile App Frame */}
+      <div className="corporate-app-frame">
         {/* Header */}
         <Header
-          onResetData={handleResetData}
-          activeCount={stats.activeIncidents}
-          overallAvailability={stats.overallAvailability}
+          currentRole={currentRole}
+          onOpenRoleSelector={() => setShowRoleModal(true)}
+          overallAvailability={overallAvailability}
         />
 
-        {/* Dynamic Animated View Area */}
-        <main className="tab-render-area">
+        {/* Tab Render Area */}
+        <main className="corporate-tab-view">
           {activeTab === 'dashboard' && (
             <DashboardTab
-              records={records}
-              stats={stats}
-              onNavigateToOutages={() => setActiveTab('outages')}
-              onNavigateToImport={() => setActiveTab('import')}
+              currentRole={currentRole}
+              onNavigateToSites={handleNavigateToSites}
+              onNavigateToGraphs={() => setActiveTab('graphs')}
             />
           )}
 
-          {activeTab === 'outages' && (
-            <OutagesTab
-              records={records}
-              onToggleStatus={handleToggleStatus}
-            />
+          {activeTab === 'graphs' && (
+            <GraphsTab currentRole={currentRole} />
           )}
 
-          {activeTab === 'insights' && (
-            <InsightsTab records={records} stats={stats} />
+          {activeTab === 'sites' && (
+            <SitesTab
+              currentRole={currentRole}
+              initialQuery={siteSearchQuery}
+            />
           )}
 
           {activeTab === 'import' && (
             <ImportTab
-              onDataLoaded={handleDataLoaded}
-              currentRecordsCount={records.length}
+              onDataLoaded={() => {
+                setActiveTab('dashboard');
+              }}
             />
           )}
         </main>
@@ -112,9 +85,18 @@ export const App: React.FC = () => {
         <BottomNavBar
           activeTab={activeTab}
           onChangeTab={(tab) => setActiveTab(tab)}
-          activeIncidentsCount={stats.activeIncidents}
         />
       </div>
+
+      {/* Role & MBU Selection Modal ("Who are you?") */}
+      {showRoleModal && (
+        <RoleSelectorModal
+          currentRole={currentRole}
+          onSelectRole={handleSelectRole}
+          onClose={() => setShowRoleModal(false)}
+          canDismiss={localStorage.getItem('engro_user_role') !== null}
+        />
+      )}
     </div>
   );
 };
