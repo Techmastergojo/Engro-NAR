@@ -1,6 +1,5 @@
-import React, { useState } from 'react';
-
-import type { TabType, UserRole } from './types';
+import React, { useState, useEffect } from 'react';
+import type { TabType, UserRole, OutageRecord } from './types';
 import { REAL_ENGRO_DATA } from './utils/realData';
 import { Header } from './components/Header';
 import { BottomNavBar } from './components/BottomNavBar';
@@ -9,6 +8,8 @@ import { GraphsTab } from './components/GraphsTab';
 import { SitesTab } from './components/SitesTab';
 import { ImportTab } from './components/ImportTab';
 import { RoleSelectorModal } from './components/RoleSelectorModal';
+import { UpdateModal } from './components/UpdateModal';
+import { checkForAppUpdates, type UpdateInfo } from './utils/updateChecker';
 import './App.css';
 
 export const App: React.FC = () => {
@@ -23,6 +24,26 @@ export const App: React.FC = () => {
   });
 
   const [siteSearchQuery, setSiteSearchQuery] = useState<string>('');
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [showUpdateModal, setShowUpdateModal] = useState<boolean>(false);
+
+  // Check for updates on startup
+  useEffect(() => {
+    const checkUpdate = async () => {
+      const info = await checkForAppUpdates();
+      if (info.hasUpdate) {
+        setUpdateInfo(info);
+        setShowUpdateModal(true);
+      }
+    };
+    checkUpdate();
+  }, []);
+
+  const handleManualCheckUpdates = async () => {
+    const info = await checkForAppUpdates();
+    setUpdateInfo(info);
+    setShowUpdateModal(true);
+  };
 
   const handleSelectRole = (role: UserRole) => {
     setCurrentRole(role);
@@ -34,6 +55,12 @@ export const App: React.FC = () => {
     setSiteSearchQuery(query);
     setActiveTab('sites');
   };
+
+  const handleDataOverride = (_newRecords: OutageRecord[], sourceTitle: string) => {
+    localStorage.setItem('engro_custom_uploaded', sourceTitle);
+    setActiveTab('dashboard');
+  };
+
 
   const overallAvailability = REAL_ENGRO_DATA.summary.avgAvailability;
 
@@ -74,9 +101,8 @@ export const App: React.FC = () => {
 
           {activeTab === 'import' && (
             <ImportTab
-              onDataLoaded={() => {
-                setActiveTab('dashboard');
-              }}
+              onDataLoaded={handleDataOverride}
+              onCheckUpdates={handleManualCheckUpdates}
             />
           )}
         </main>
@@ -95,6 +121,14 @@ export const App: React.FC = () => {
           onSelectRole={handleSelectRole}
           onClose={() => setShowRoleModal(false)}
           canDismiss={localStorage.getItem('engro_user_role') !== null}
+        />
+      )}
+
+      {/* Auto-Update Notification Modal */}
+      {showUpdateModal && updateInfo && (
+        <UpdateModal
+          updateInfo={updateInfo}
+          onClose={() => setShowUpdateModal(false)}
         />
       )}
     </div>

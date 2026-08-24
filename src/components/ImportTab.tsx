@@ -1,41 +1,41 @@
 import React, { useState, useRef } from 'react';
 import type { OutageRecord } from '../types';
 import { parseExcelFile } from '../utils/excelParser';
-import { INITIAL_SAMPLE_RECORDS, ALTERNATE_STORM_DATASET } from '../utils/sampleData';
 import {
   UploadCloud,
-  FileCheck2,
   FileSpreadsheet,
   AlertCircle,
   Sparkles,
   Download,
   CheckCircle2,
-  RefreshCw
+  RefreshCw,
+  Layers,
+  ArrowRight
 } from 'lucide-react';
+
 import * as XLSX from 'xlsx';
 import confetti from 'canvas-confetti';
 import { soundFX } from '../utils/soundEffects';
 
 interface ImportTabProps {
   onDataLoaded: (records: OutageRecord[], sourceTitle: string) => void;
-  currentRecordsCount?: number;
+  onCheckUpdates?: () => void;
 }
 
 export const ImportTab: React.FC<ImportTabProps> = ({
-  onDataLoaded
+  onDataLoaded,
+  onCheckUpdates
 }) => {
-
   const [isDragging, setIsDragging] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [previewData, setPreviewData] = useState<OutageRecord[] | null>(null);
+  const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string; details?: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = async (file: File) => {
     if (!file.name.match(/\.(xlsx|xls|csv)$/i)) {
       setStatusMessage({
         type: 'error',
-        text: 'Please upload a valid Excel spreadsheet (.xlsx, .xls) or CSV file.'
+        text: 'Invalid file format. Please upload an Excel spreadsheet (.xlsx, .xls) or CSV.'
       });
       return;
     }
@@ -45,19 +45,19 @@ export const ImportTab: React.FC<ImportTabProps> = ({
 
     try {
       const result = await parseExcelFile(file);
-      setPreviewData(result.records);
       onDataLoaded(result.records, file.name);
       soundFX.playSuccess();
-      confetti({ particleCount: 60, spread: 60 });
+      confetti({ particleCount: 70, spread: 65, origin: { y: 0.6 } });
       setStatusMessage({
         type: 'success',
-        text: `Successfully ingested ${result.totalRows} telecom sites from "${file.name}"!`
+        text: `Data Ingestion Complete: ${result.totalRows.toLocaleString()} Records Overridden!`,
+        details: `Loaded "${file.name}" (Sheet: ${result.sheetName}). All dashboard KPIs, graphs, and site intelligence cards are now updated with this data.`
       });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to parse Excel file.';
       setStatusMessage({
         type: 'error',
-        text: `Error reading file: ${message}`
+        text: `Ingestion Failed: ${message}`
       });
     } finally {
       setLoading(false);
@@ -81,76 +81,59 @@ export const ImportTab: React.FC<ImportTabProps> = ({
     }
   };
 
-  const loadPreset = (dataset: OutageRecord[], title: string) => {
-    soundFX.playSuccess();
-    onDataLoaded(dataset, title);
-    setPreviewData(dataset);
-    setStatusMessage({
-      type: 'success',
-      text: `Loaded ${title} (${dataset.length} nodes).`
-    });
-  };
-
   const downloadSampleTemplate = () => {
     soundFX.playClick();
     const sampleRows = [
       {
-        'Site ID': 'ENGRO-101',
-        'Site Name': 'Karachi Clifton Tower',
-        'Region': 'South Region',
-        'Downtime Hours': 3.5,
-        'Availability %': 99.1,
-        'Category': 'Commercial Grid Outage',
-        'Root Cause': 'Transformer feeder breakdown',
-        'Status': 'Resolved',
+        'Site Code': 'ALC6522',
+        'Site': 'ALC6522__S_NearSaidNagar',
+        'MBU#': 'C4-HFZ-06',
+        'DT': 24.48,
+        'Reasons': 'B2S',
+        'Reason Category': 'B2S/Exclusion- Good Grid Site , CP Prolonged Outage',
+        'Vendor': 'Huawei',
+        'SiteType': 'Macro',
+        'Priority': 'General',
         'Date': '2026-08-24'
       },
       {
-        'Site ID': 'ENGRO-102',
-        'Site Name': 'Lahore Mall Road Hub',
-        'Region': 'Central Region',
-        'Downtime Hours': 0.8,
-        'Availability %': 99.8,
-        'Category': 'Fiber Cut',
-        'Root Cause': 'Optical cable slice during trenching',
-        'Status': 'Resolved',
-        'Date': '2026-08-24'
-      },
-      {
-        'Site ID': 'ENGRO-103',
-        'Site Name': 'Islamabad F-7 Sector Mast',
-        'Region': 'North Region',
-        'Downtime Hours': 7.2,
-        'Availability %': 98.4,
-        'Category': 'Genset Fuel Exhaustion',
-        'Root Cause': 'Fuel replenishment delay',
-        'Status': 'Active',
+        'Site Code': 'KMK5618',
+        'Site': 'KMK5618__S_PakTown',
+        'MBU#': 'C4-GUJ-01',
+        'DT': 12.50,
+        'Reasons': 'OMO',
+        'Reason Category': 'Power Issue On OMO',
+        'Vendor': 'Huawei',
+        'SiteType': 'Macro',
+        'Priority': 'Elite',
         'Date': '2026-08-24'
       }
     ];
 
     const ws = XLSX.utils.json_to_sheet(sampleRows);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'NAR_Template');
-    XLSX.writeFile(wb, 'Engro_NAR_Template.xlsx');
+    XLSX.utils.book_append_sheet(wb, ws, 'Consolidated RSL');
+    XLSX.writeFile(wb, 'Engro_NAR_Telemetry_Template.xlsx');
   };
 
   return (
-    <div className="tab-content import-tab">
-      {/* Header Info */}
-      <div className="import-hero-card glass-panel">
-        <div className="import-hero-title">
-          <FileSpreadsheet className="text-emerald" size={22} />
-          <h3>Excel Ingestion & Telemetry Pipeline</h3>
+    <div className="tab-content import-content">
+      {/* Upload Hero Card */}
+      <div className="corp-card upload-hero-card">
+        <div className="hero-header-row">
+          <div className="hero-icon-box">
+            <FileSpreadsheet size={22} className="text-engro-green" />
+          </div>
+          <div>
+            <h3 className="hero-title">Telemetry Data Ingestion Portal</h3>
+            <p className="hero-sub">Upload any new C4 report to immediately override active telemetry metrics.</p>
+          </div>
         </div>
-        <p className="import-hero-desc">
-          Upload any Excel sheet (.xlsx, .xls, .csv). Our smart fuzzy engine auto-detects column names for downtime, site ID, availability, and causes.
-        </p>
       </div>
 
-      {/* Drag and Drop Zone */}
+      {/* Drag & Drop Upload Zone */}
       <div
-        className={`dropzone-card glass-panel ${isDragging ? 'dragging' : ''}`}
+        className={`corp-card upload-dropzone ${isDragging ? 'is-dragging' : ''}`}
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
         onDrop={onDrop}
@@ -168,100 +151,74 @@ export const ImportTab: React.FC<ImportTabProps> = ({
           }}
         />
 
-        <div className="dropzone-inner">
-          <div className="dropzone-icon-pulse">
-            <UploadCloud size={38} className="text-cyan" />
+        <div className="dropzone-center">
+          <div className="upload-cloud-circle">
+            <UploadCloud size={34} className="text-engro-green" />
           </div>
-          <h4>{loading ? 'Processing Telemetry Sheet...' : 'Tap or Drag & Drop Excel File'}</h4>
-          <span className="dropzone-sub">Supports .XLSX, .XLS, .CSV format</span>
-          <button className="browse-files-btn" type="button">
-            Select Spreadsheet
+          <h4>{loading ? 'Processing Spreadsheet...' : 'Drop Excel / CSV Telemetry Sheet Here'}</h4>
+          <span className="dropzone-hint">Tap to browse &bull; Supports .XLSX, .XLS, .CSV</span>
+          <button className="select-file-btn" type="button">
+            Browse Document
           </button>
         </div>
       </div>
 
-      {/* Status Feedback Notification */}
+      {/* Ingestion Feedback Banner */}
       {statusMessage && (
-        <div className={`status-notification glass-panel ${statusMessage.type === 'success' ? 'notif-success' : 'notif-error'}`}>
-          {statusMessage.type === 'success' ? (
-            <CheckCircle2 size={18} className="text-emerald" />
-          ) : (
-            <AlertCircle size={18} className="text-coral" />
-          )}
-          <span>{statusMessage.text}</span>
+        <div className={`corp-card upload-status-card ${statusMessage.type === 'success' ? 'status-pass' : 'status-fail'}`}>
+          <div className="status-title-row">
+            {statusMessage.type === 'success' ? (
+              <CheckCircle2 size={18} className="text-engro-green" />
+            ) : (
+              <AlertCircle size={18} className="text-coral" />
+            )}
+            <h4>{statusMessage.text}</h4>
+          </div>
+          {statusMessage.details && <p className="status-detail-text">{statusMessage.details}</p>}
         </div>
       )}
 
-      {/* Template & Preset Datasets Card */}
-      <div className="presets-card glass-panel">
-        <div className="presets-header">
-          <Sparkles size={16} className="text-amber" />
-          <h4>Instant Telecom Presets & Template</h4>
+      {/* Quick Action Tools */}
+      <div className="corp-card actions-panel">
+        <div className="panel-title-row">
+          <Layers size={15} className="text-engro-blue" />
+          <h4>Data Management Tools</h4>
         </div>
 
-        <div className="preset-buttons-row">
-          <button
-            className="preset-btn"
-            onClick={() => loadPreset(INITIAL_SAMPLE_RECORDS, 'Standard 10-Tower Grid')}
-          >
-            <RefreshCw size={14} />
-            <span>Load 10-Site Grid</span>
+        <div className="action-buttons-list">
+          <button className="corp-action-btn" onClick={downloadSampleTemplate}>
+            <Download size={15} />
+            <div className="btn-text-block">
+              <span className="btn-main">Download Excel Template</span>
+              <span className="btn-sub">C4 Consolidated RSL format</span>
+            </div>
+            <ArrowRight size={14} className="arrow-icon" />
           </button>
 
-          <button
-            className="preset-btn preset-storm"
-            onClick={() => loadPreset(ALTERNATE_STORM_DATASET, 'Monsoon Flood Scenario')}
-          >
-            <AlertCircle size={14} />
-            <span>Load Storm Scenario</span>
-          </button>
-
-          <button className="preset-btn preset-download" onClick={downloadSampleTemplate}>
-            <Download size={14} />
-            <span>Download Excel Template</span>
-          </button>
+          {onCheckUpdates && (
+            <button className="corp-action-btn update-btn" onClick={onCheckUpdates}>
+              <RefreshCw size={15} />
+              <div className="btn-text-block">
+                <span className="btn-main">Check for App Updates</span>
+                <span className="btn-sub">Sync with Engro-Connect-Web repo</span>
+              </div>
+              <ArrowRight size={14} className="arrow-icon" />
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Currently Ingested Records Preview Table */}
-      {previewData && previewData.length > 0 && (
-        <div className="preview-table-card glass-panel">
-          <div className="preview-header">
-            <FileCheck2 size={16} className="text-cyan" />
-            <h4>Ingested Data Preview ({previewData.length} records)</h4>
+      {/* Engineer Signature Card */}
+      <div className="corp-card signature-banner">
+        <div className="sig-content">
+          <div className="sig-badge">
+            <Sparkles size={13} className="text-amber" />
+            <span>AUTHOR & ARCHITECT</span>
           </div>
-
-          <div className="preview-table-scroll">
-            <table className="mini-data-table">
-              <thead>
-                <tr>
-                  <th>Site Name</th>
-                  <th>Region</th>
-                  <th>Downtime</th>
-                  <th>Avail %</th>
-                  <th>Category</th>
-                </tr>
-              </thead>
-              <tbody>
-                {previewData.slice(0, 5).map((row) => (
-                  <tr key={row.id}>
-                    <td>
-                      <strong>{row.siteName}</strong>
-                      <div className="sub-id">{row.siteId}</div>
-                    </td>
-                    <td>{row.region}</td>
-                    <td>{row.downtimeHours}h</td>
-                    <td className={row.availability < 99.0 ? 'text-coral' : 'text-emerald'}>
-                      {row.availability}%
-                    </td>
-                    <td>{row.category}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <h4 className="sig-name">Engro NAR Platform</h4>
+          <span className="sig-creator">Powered By <strong>Hamza Tehseen Cheema</strong></span>
         </div>
-      )}
+      </div>
     </div>
   );
 };

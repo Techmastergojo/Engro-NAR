@@ -1,16 +1,16 @@
 {
-  "short_name": "Engro NAR",
-  "name": "Engro Enfrashare - Network Availability Report",
+  "short_name": "Enfrashare NAR",
+  "name": "Engro Enfrashare NAR",
   "icons": [
     {
-      "src": "favicon.svg",
-      "sizes": "64x64 32x32 24x24 16x16",
-      "type": "image/svg+xml"
+      "src": "engro_logo.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png"
     }
   ],
   "start_url": ".",
   "display": "standalone",
-  "theme_color": "#070a13",
-  "background_color": "#070a13",
+  "theme_color": "#071322",
+  "background_color": "#071322",
   "orientation": "portrait"
 }

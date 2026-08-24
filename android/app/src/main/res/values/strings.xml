@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Engro NAR</string>
-    <string name="title_activity_main">Engro NAR</string>
-    <string name="package_name">com.engro.nar</string>
-    <string name="custom_url_scheme">com.engro.nar</string>
+    <string name="app_name">Engro Enfrashare NAR</string>
+    <string name="title_activity_main">Engro Enfrashare NAR</string>
+    <string name="package_name">com.engro.enfrashare.nar</string>
+    <string name="custom_url_scheme">com.engro.enfrashare.nar</string>
 </resources>
