@@ -29,12 +29,19 @@ function computeSite6MonthNar(siteAvail: number, siteTotalDt: number): MonthlyNa
 // Ensure all raw sites have their 6-Month NAR & daily NAR initialized
 const rawSites = (realDataJson as unknown as { allSites: SiteCatalogItem[] }).allSites || [];
 const enrichedSites: SiteCatalogItem[] = rawSites.map((s) => {
-  const siteAvail = s.availability || 99.0;
-  const siteDt = s.totalDtHours || 0;
+  let siteAvail = s.availability || 99.0;
+  let siteDt = s.totalDtHours || 0;
+
+  // Explicitly set site 9515 / GUJ9515 to 80.00% NAR as requested
+  if (s.siteCode.includes('9515') || s.siteName.includes('9515')) {
+    siteAvail = 80.00;
+    siteDt = 96.0;
+  }
+
   const nar6Months = computeSite6MonthNar(siteAvail, siteDt);
 
   const enrichedTimeline = (s.dailyTimeline || []).map((d) => {
-    const dailyNar = Number(((24 - Math.min(24, d.hours)) / 24 * 100).toFixed(2));
+    const dailyNar = s.siteCode.includes('9515') ? 80.00 : Number(((24 - Math.min(24, d.hours)) / 24 * 100).toFixed(2));
     return {
       ...d,
       narPercent: dailyNar
@@ -43,10 +50,13 @@ const enrichedSites: SiteCatalogItem[] = rawSites.map((s) => {
 
   return {
     ...s,
+    availability: siteAvail,
+    totalDtHours: siteDt,
     nar6Months,
     dailyTimeline: enrichedTimeline
   };
 });
+
 
 // Enrich daily timeline with daily NAR %
 const rawTimeline = (realDataJson as unknown as { dailyTimeline: DailySummary[] }).dailyTimeline || [];

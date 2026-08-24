@@ -1,8 +1,7 @@
 import React, { useState, useRef } from 'react';
 import type { HistoricalPeriod, SiteCatalogItem } from '../types';
-
 import { parseExcelFile } from '../utils/excelParser';
-import { savePeriod } from '../utils/periodStore';
+import { savePeriod, getActivePeriod } from '../utils/periodStore';
 import {
   UploadCloud,
   FileSpreadsheet,
@@ -13,8 +12,10 @@ import {
   RefreshCw,
   Layers,
   ArrowRight,
-  PlusCircle
+  PlusCircle,
+  Share2
 } from 'lucide-react';
+
 import * as XLSX from 'xlsx';
 import confetti from 'canvas-confetti';
 import { soundFX } from '../utils/soundEffects';
@@ -53,7 +54,6 @@ export const ImportTab: React.FC<ImportTabProps> = ({
     try {
       const result = await parseExcelFile(file);
       
-      // Construct site catalog from the parsed records
       const siteMap: Record<string, SiteCatalogItem> = {};
       const reasonMap: Record<string, { reason: string; category: string; totalDtHours: number; incidentCount: number }> = {};
       const mbuMap: Record<string, { mbu: string; totalDtHours: number; incidentCount: number; siteCount: Set<string> }> = {};
@@ -84,7 +84,6 @@ export const ImportTab: React.FC<ImportTabProps> = ({
         siteMap[siteCode].totalDtHours += dt;
         siteMap[siteCode].incidentCount += 1;
 
-        // Reason
         const reason = r.rootCause || r.category || 'Power Grid';
         if (!reasonMap[reason]) {
           reasonMap[reason] = { reason, category: r.category, totalDtHours: 0, incidentCount: 0 };
@@ -92,7 +91,6 @@ export const ImportTab: React.FC<ImportTabProps> = ({
         reasonMap[reason].totalDtHours += dt;
         reasonMap[reason].incidentCount += 1;
 
-        // MBU
         const mbu = r.region || 'C4-GUJ-01';
         if (!mbuMap[mbu]) {
           mbuMap[mbu] = { mbu, totalDtHours: 0, incidentCount: 0, siteCount: new Set() };
@@ -101,7 +99,6 @@ export const ImportTab: React.FC<ImportTabProps> = ({
         mbuMap[mbu].incidentCount += 1;
         mbuMap[mbu].siteCount.add(siteCode);
 
-        // Daily
         const d = r.timestamp || '2026-09-01';
         if (!dailyMap[d]) {
           dailyMap[d] = { date: d, totalDtHours: 0, incidentCount: 0, mbus: {} };
@@ -136,7 +133,6 @@ export const ImportTab: React.FC<ImportTabProps> = ({
         narPercent: Math.max(90, Number((100 - (d.totalDtHours / Math.max(1, allSitesList.length * 24)) * 100).toFixed(2)))
       })).sort((a, b) => a.date.localeCompare(b.date));
 
-
       const newPeriodId = `period-${Date.now()}`;
       const periodName = periodNameInput.trim() || file.name.replace(/\.[^/.]+$/, '');
 
@@ -161,8 +157,8 @@ export const ImportTab: React.FC<ImportTabProps> = ({
       confetti({ particleCount: 70, spread: 65, origin: { y: 0.6 } });
       setStatusMessage({
         type: 'success',
-        text: `New Period "${periodName}" Created & Stored!`,
-        details: `Saved ${allSitesList.length} sites and ${result.totalRows} records as a distinct historical dataset. You can switch between this period and August 2026 anytime via the top bar selector.`
+        text: `New Period "${periodName}" Ingested & Stored!`,
+        details: `Saved ${allSitesList.length} sites and ${result.totalRows} records as a historical dataset. Switch anytime via the top bar selector.`
       });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to parse Excel file.';
@@ -192,27 +188,76 @@ export const ImportTab: React.FC<ImportTabProps> = ({
     }
   };
 
+  // Reliable Universal Excel & CSV Downloader
   const downloadSampleTemplate = () => {
     soundFX.playClick();
-    const sampleRows = [
-      {
-        'Site Code': 'ALC6522',
-        'Site': 'ALC6522__S_NearSaidNagar',
-        'MBU#': 'C4-HFZ-06',
-        'DT': 24.48,
-        'Reasons': 'B2S',
-        'Reason Category': 'B2S/Exclusion- Good Grid Site , CP Prolonged Outage',
-        'Vendor': 'Huawei',
-        'SiteType': 'Macro',
-        'Priority': 'General',
-        'Date': '2026-08-24'
-      }
+    const sampleData = [
+      ['Site Code', 'Site', 'MBU#', 'DT', 'Reasons', 'Reason Category', 'Vendor', 'SiteType', 'Priority', 'Date'],
+      ['GUJ9515', 'Rahwali GJ4165', 'C4-GUJ-02', '96.00', 'B2S', 'B2S Prolonged Outage', 'Huawei', 'Platinum', 'Platinum', '2026-08-24'],
+      ['ALC6522', 'ALC6522__S_NearSaidNagar', 'C4-HFZ-06', '24.48', 'B2S', 'B2S/Exclusion Good Grid', 'Huawei', 'Macro', 'General', '2026-08-24'],
+      ['KMK5618', 'KMK5618__S_PakTown', 'C4-GUJ-01', '12.50', 'OMO', 'Power Issue On OMO', 'Huawei', 'Macro', 'Elite', '2026-08-24']
     ];
 
-    const ws = XLSX.utils.json_to_sheet(sampleRows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Consolidated RSL');
-    XLSX.writeFile(wb, 'Engro_NAR_Telemetry_Template.xlsx');
+    try {
+      const ws = XLSX.utils.aoa_to_sheet(sampleData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Consolidated RSL');
+      const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'Engro_Enfrashare_NAR_Template.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      // CSV Fallback
+      const csvContent = 'data:text/csv;charset=utf-8,' + sampleData.map(e => e.join(',')).join('\n');
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement('a');
+      link.setAttribute('href', encodedUri);
+      link.setAttribute('download', 'Engro_NAR_Template.csv');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
+  // Export Active Telemetry for Cloud Repository (To Update All Users Globally)
+  const exportTelemetryForCloud = () => {
+    soundFX.playClick();
+    const active = getActivePeriod();
+    const exportPayload = {
+      version: '1.0.0',
+      syncedAt: new Date().toISOString(),
+      summary: {
+        totalSites: active.sitesCount,
+        totalDowntimeHours: active.totalDtHours,
+        avgAvailability: active.avgAvailability
+      },
+      allSites: active.allSites,
+      mbuBreakdown: active.mbuBreakdown,
+      topReasons: active.topReasons,
+      dailyTimeline: active.dailyTimeline
+    };
+
+    const blob = new Blob([JSON.stringify(exportPayload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'telemetry-data.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    setStatusMessage({
+      type: 'success',
+      text: 'telemetry-data.json Exported Successfully!',
+      details: 'Commit this file to "Techmastergojo/Engro-Connect-Web" repo. Once committed, all users across Pakistan will automatically receive this updated telemetry over the air!'
+    });
   };
 
   return (
@@ -296,7 +341,7 @@ export const ImportTab: React.FC<ImportTabProps> = ({
       <div className="corp-card actions-panel">
         <div className="panel-title-row">
           <Layers size={15} className="text-engro-blue" />
-          <h4>Cloud Sync & Data Tools</h4>
+          <h4>Cloud Sync & Global Deployment Tools</h4>
         </div>
 
         <div className="action-buttons-list">
@@ -314,8 +359,17 @@ export const ImportTab: React.FC<ImportTabProps> = ({
           <button className="corp-action-btn" onClick={downloadSampleTemplate}>
             <Download size={15} />
             <div className="btn-text-block">
-              <span className="btn-main">Download Excel Template</span>
-              <span className="btn-sub">Standard Consolidated RSL format</span>
+              <span className="btn-main">Download Excel / CSV Template</span>
+              <span className="btn-sub">Includes site GUJ9515 sample row</span>
+            </div>
+            <ArrowRight size={14} className="arrow-icon" />
+          </button>
+
+          <button className="corp-action-btn global-export-btn" onClick={exportTelemetryForCloud}>
+            <Share2 size={15} className="text-amber" />
+            <div className="btn-text-block">
+              <span className="btn-main">Export Telemetry Feed for All Users</span>
+              <span className="btn-sub">Generates telemetry-data.json for GitHub cloud push</span>
             </div>
             <ArrowRight size={14} className="arrow-icon" />
           </button>
