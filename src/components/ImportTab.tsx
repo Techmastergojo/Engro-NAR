@@ -1,6 +1,8 @@
 import React, { useState, useRef } from 'react';
-import type { OutageRecord } from '../types';
+import type { HistoricalPeriod, SiteCatalogItem } from '../types';
+
 import { parseExcelFile } from '../utils/excelParser';
+import { savePeriod } from '../utils/periodStore';
 import {
   UploadCloud,
   FileSpreadsheet,
@@ -10,24 +12,29 @@ import {
   CheckCircle2,
   RefreshCw,
   Layers,
-  ArrowRight
+  ArrowRight,
+  PlusCircle
 } from 'lucide-react';
-
 import * as XLSX from 'xlsx';
 import confetti from 'canvas-confetti';
 import { soundFX } from '../utils/soundEffects';
 
 interface ImportTabProps {
-  onDataLoaded: (records: OutageRecord[], sourceTitle: string) => void;
+  onPeriodCreated: (newPeriod: HistoricalPeriod) => void;
   onCheckUpdates?: () => void;
+  onCloudSync?: () => void;
+  isSyncing?: boolean;
 }
 
 export const ImportTab: React.FC<ImportTabProps> = ({
-  onDataLoaded,
-  onCheckUpdates
+  onPeriodCreated,
+  onCheckUpdates,
+  onCloudSync,
+  isSyncing = false
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [periodNameInput, setPeriodNameInput] = useState<string>('September 2026 Telemetry');
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string; details?: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -45,13 +52,112 @@ export const ImportTab: React.FC<ImportTabProps> = ({
 
     try {
       const result = await parseExcelFile(file);
-      onDataLoaded(result.records, file.name);
+      
+      // Construct site catalog from the parsed records
+      const siteMap: Record<string, SiteCatalogItem> = {};
+      const reasonMap: Record<string, { reason: string; category: string; totalDtHours: number; incidentCount: number }> = {};
+      const mbuMap: Record<string, { mbu: string; totalDtHours: number; incidentCount: number; siteCount: Set<string> }> = {};
+      const dailyMap: Record<string, { date: string; totalDtHours: number; incidentCount: number; mbus: Record<string, number> }> = {};
+      let totalDt = 0;
+
+      result.records.forEach(r => {
+        const siteCode = r.siteId;
+        const dt = r.downtimeHours || 0;
+        totalDt += dt;
+
+        if (!siteMap[siteCode]) {
+          siteMap[siteCode] = {
+            siteCode: r.siteId,
+            siteName: r.siteName,
+            mbu: r.region,
+            vendor: 'Huawei',
+            siteType: 'Macro',
+            priority: 'General',
+            totalDtHours: 0,
+            incidentCount: 0,
+            availability: r.availability,
+            topReasons: [],
+            dailyTimeline: []
+          };
+        }
+        siteMap[siteCode].totalDtHours += dt;
+        siteMap[siteCode].incidentCount += 1;
+
+        // Reason
+        const reason = r.rootCause || r.category || 'Power Grid';
+        if (!reasonMap[reason]) {
+          reasonMap[reason] = { reason, category: r.category, totalDtHours: 0, incidentCount: 0 };
+        }
+        reasonMap[reason].totalDtHours += dt;
+        reasonMap[reason].incidentCount += 1;
+
+        // MBU
+        const mbu = r.region || 'C4-GUJ-01';
+        if (!mbuMap[mbu]) {
+          mbuMap[mbu] = { mbu, totalDtHours: 0, incidentCount: 0, siteCount: new Set() };
+        }
+        mbuMap[mbu].totalDtHours += dt;
+        mbuMap[mbu].incidentCount += 1;
+        mbuMap[mbu].siteCount.add(siteCode);
+
+        // Daily
+        const d = r.timestamp || '2026-09-01';
+        if (!dailyMap[d]) {
+          dailyMap[d] = { date: d, totalDtHours: 0, incidentCount: 0, mbus: {} };
+        }
+        dailyMap[d].totalDtHours += dt;
+        dailyMap[d].incidentCount += 1;
+        dailyMap[d].mbus[mbu] = (dailyMap[d].mbus[mbu] || 0) + dt;
+      });
+
+      const allSitesList: SiteCatalogItem[] = Object.values(siteMap).map(s => ({
+        ...s,
+        totalDtHours: Number(s.totalDtHours.toFixed(1))
+      })).sort((a, b) => b.totalDtHours - a.totalDtHours);
+
+      const mbuList = Object.entries(mbuMap).map(([mbu, d]) => ({
+        mbu,
+        totalDtHours: Number(d.totalDtHours.toFixed(1)),
+        incidentCount: d.incidentCount,
+        siteCount: d.siteCount.size,
+        avgAvailability: Number((100 - (d.totalDtHours / Math.max(1, d.siteCount.size * 480)) * 100).toFixed(2))
+      })).sort((a, b) => b.totalDtHours - a.totalDtHours);
+
+      const topReasonsList = Object.values(reasonMap).map(r => ({
+        reason: r.reason,
+        category: r.category,
+        totalDtHours: Number(r.totalDtHours.toFixed(1)),
+        incidentCount: r.incidentCount
+      })).sort((a, b) => b.totalDtHours - a.totalDtHours);
+
+      const dailyTimelineList = Object.values(dailyMap).sort((a, b) => a.date.localeCompare(b.date));
+
+      const newPeriodId = `period-${Date.now()}`;
+      const periodName = periodNameInput.trim() || file.name.replace(/\.[^/.]+$/, '');
+
+      const newHistoricalPeriod: HistoricalPeriod = {
+        id: newPeriodId,
+        name: periodName,
+        createdAt: new Date().toISOString().split('T')[0],
+        sitesCount: allSitesList.length,
+        totalDtHours: Number(totalDt.toFixed(1)),
+        avgAvailability: Number((result.records.reduce((s, r) => s + r.availability, 0) / Math.max(1, result.records.length)).toFixed(2)),
+        allSites: allSitesList,
+        topReasons: topReasonsList,
+        mbuBreakdown: mbuList,
+        dailyTimeline: dailyTimelineList,
+        sampleIncidents: result.records.slice(0, 2000)
+      };
+
+      savePeriod(newHistoricalPeriod);
+      onPeriodCreated(newHistoricalPeriod);
+
       soundFX.playSuccess();
       confetti({ particleCount: 70, spread: 65, origin: { y: 0.6 } });
       setStatusMessage({
         type: 'success',
-        text: `Data Ingestion Complete: ${result.totalRows.toLocaleString()} Records Overridden!`,
-        details: `Loaded "${file.name}" (Sheet: ${result.sheetName}). All dashboard KPIs, graphs, and site intelligence cards are now updated with this data.`
+        text: `New Period "${periodName}" Created & Stored!`,
+        details: `Saved ${allSitesList.length} sites and ${result.totalRows} records as a distinct historical dataset. You can switch between this period and August 2026 anytime via the top bar selector.`
       });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to parse Excel file.';
@@ -95,18 +201,6 @@ export const ImportTab: React.FC<ImportTabProps> = ({
         'SiteType': 'Macro',
         'Priority': 'General',
         'Date': '2026-08-24'
-      },
-      {
-        'Site Code': 'KMK5618',
-        'Site': 'KMK5618__S_PakTown',
-        'MBU#': 'C4-GUJ-01',
-        'DT': 12.50,
-        'Reasons': 'OMO',
-        'Reason Category': 'Power Issue On OMO',
-        'Vendor': 'Huawei',
-        'SiteType': 'Macro',
-        'Priority': 'Elite',
-        'Date': '2026-08-24'
       }
     ];
 
@@ -125,10 +219,25 @@ export const ImportTab: React.FC<ImportTabProps> = ({
             <FileSpreadsheet size={22} className="text-engro-green" />
           </div>
           <div>
-            <h3 className="hero-title">Telemetry Data Ingestion Portal</h3>
-            <p className="hero-sub">Upload any new C4 report to immediately override active telemetry metrics.</p>
+            <h3 className="hero-title">Telemetry Data Ingestion & Archiving</h3>
+            <p className="hero-sub">Upload daily or monthly sheets without overwriting historical datasets.</p>
           </div>
         </div>
+      </div>
+
+      {/* Dataset Label Input */}
+      <div className="corp-card period-name-box">
+        <label className="period-name-lbl">
+          <PlusCircle size={13} className="text-engro-green" />
+          <span>New Historical Period / Month Label:</span>
+        </label>
+        <input
+          type="text"
+          className="period-name-input"
+          value={periodNameInput}
+          onChange={(e) => setPeriodNameInput(e.target.value)}
+          placeholder="e.g. September 2026 Telemetry, March 2026 Report"
+        />
       </div>
 
       {/* Drag & Drop Upload Zone */}
@@ -155,7 +264,7 @@ export const ImportTab: React.FC<ImportTabProps> = ({
           <div className="upload-cloud-circle">
             <UploadCloud size={34} className="text-engro-green" />
           </div>
-          <h4>{loading ? 'Processing Spreadsheet...' : 'Drop Excel / CSV Telemetry Sheet Here'}</h4>
+          <h4>{loading ? 'Processing & Archiving...' : 'Drop Excel / CSV Telemetry Sheet Here'}</h4>
           <span className="dropzone-hint">Tap to browse &bull; Supports .XLSX, .XLS, .CSV</span>
           <button className="select-file-btn" type="button">
             Browse Document
@@ -182,25 +291,36 @@ export const ImportTab: React.FC<ImportTabProps> = ({
       <div className="corp-card actions-panel">
         <div className="panel-title-row">
           <Layers size={15} className="text-engro-blue" />
-          <h4>Data Management Tools</h4>
+          <h4>Cloud Sync & Data Tools</h4>
         </div>
 
         <div className="action-buttons-list">
+          {onCloudSync && (
+            <button className="corp-action-btn cloud-sync-action" onClick={onCloudSync}>
+              <RefreshCw size={15} className={isSyncing ? 'spin-icon text-engro-green' : ''} />
+              <div className="btn-text-block">
+                <span className="btn-main">Sync Daily Cloud Telemetry</span>
+                <span className="btn-sub">Fetch latest updates over the air without updating APK</span>
+              </div>
+              <ArrowRight size={14} className="arrow-icon" />
+            </button>
+          )}
+
           <button className="corp-action-btn" onClick={downloadSampleTemplate}>
             <Download size={15} />
             <div className="btn-text-block">
               <span className="btn-main">Download Excel Template</span>
-              <span className="btn-sub">C4 Consolidated RSL format</span>
+              <span className="btn-sub">Standard Consolidated RSL format</span>
             </div>
             <ArrowRight size={14} className="arrow-icon" />
           </button>
 
           {onCheckUpdates && (
-            <button className="corp-action-btn update-btn" onClick={onCheckUpdates}>
+            <button className="corp-action-btn" onClick={onCheckUpdates}>
               <RefreshCw size={15} />
               <div className="btn-text-block">
                 <span className="btn-main">Check for App Updates</span>
-                <span className="btn-sub">Sync with Engro-Connect-Web repo</span>
+                <span className="btn-sub">GitHub: Techmastergojo/Engro-Connect-Web</span>
               </div>
               <ArrowRight size={14} className="arrow-icon" />
             </button>
@@ -213,9 +333,9 @@ export const ImportTab: React.FC<ImportTabProps> = ({
         <div className="sig-content">
           <div className="sig-badge">
             <Sparkles size={13} className="text-amber" />
-            <span>AUTHOR & ARCHITECT</span>
+            <span>PLATFORM ARCHITECT</span>
           </div>
-          <h4 className="sig-name">Engro NAR Platform</h4>
+          <h4 className="sig-name">Engro Enfrashare NAR</h4>
           <span className="sig-creator">Powered By <strong>Hamza Tehseen Cheema</strong></span>
         </div>
       </div>

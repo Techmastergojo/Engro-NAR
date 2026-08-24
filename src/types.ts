@@ -60,7 +60,6 @@ export interface AnomalyFact {
 }
 
 export interface MbuSummary {
-
   mbu: string;
   totalDtHours: number;
   incidentCount: number;
@@ -80,6 +79,20 @@ export interface DailySummary {
   totalDtHours: number;
   incidentCount: number;
   mbus: Record<string, number>;
+}
+
+export interface HistoricalPeriod {
+  id: string; // e.g. 'aug-2026', 'sep-2026', 'mar-2026'
+  name: string; // e.g. 'August 2026', 'March 2026'
+  createdAt: string;
+  sitesCount: number;
+  totalDtHours: number;
+  avgAvailability: number;
+  allSites: SiteCatalogItem[];
+  topReasons: ReasonSummary[];
+  mbuBreakdown: MbuSummary[];
+  dailyTimeline: DailySummary[];
+  sampleIncidents: OutageRecord[];
 }
 
 export type TabType = 'dashboard' | 'graphs' | 'sites' | 'import';

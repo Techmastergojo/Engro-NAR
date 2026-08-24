@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import type { UserRole } from '../types';
-import { REAL_ENGRO_DATA } from '../utils/realData';
+import type { UserRole, HistoricalPeriod } from '../types';
 import {
   AreaChart,
   Area,
@@ -17,32 +16,32 @@ import { soundFX } from '../utils/soundEffects';
 
 interface GraphsTabProps {
   currentRole?: UserRole;
+  activePeriod: HistoricalPeriod;
 }
 
-export const GraphsTab: React.FC<GraphsTabProps> = () => {
-
+export const GraphsTab: React.FC<GraphsTabProps> = ({ activePeriod }) => {
   const [activeChart, setActiveChart] = useState<'timeline' | 'reasons' | 'mbus'>('timeline');
 
-  // Timeline chart data
-  const timelineData = REAL_ENGRO_DATA.dailyTimeline.map((d) => {
+  // Timeline chart data from active period
+  const timelineData = activePeriod.dailyTimeline.map((d) => {
     const day = parseInt(d.date.split('-')[2] || '1', 10);
     return {
-      name: `Aug ${day}`,
+      name: `Day ${day}`,
       hours: d.totalDtHours,
       incidents: d.incidentCount
     };
   });
 
-  // Reasons chart data
-  const reasonsData = REAL_ENGRO_DATA.topReasons.slice(0, 6).map((r) => ({
+  // Reasons chart data from active period
+  const reasonsData = activePeriod.topReasons.slice(0, 6).map((r) => ({
     name: r.reason.length > 14 ? `${r.reason.substring(0, 14)}...` : r.reason,
     fullName: r.reason,
     hours: r.totalDtHours,
     incidents: r.incidentCount
   }));
 
-  // MBU chart data
-  const mbuData = REAL_ENGRO_DATA.mbuBreakdown.map((m) => ({
+  // MBU chart data from active period
+  const mbuData = activePeriod.mbuBreakdown.map((m) => ({
     name: m.mbu.replace('C4-', ''),
     mbu: m.mbu,
     hours: m.totalDtHours,
@@ -97,9 +96,9 @@ export const GraphsTab: React.FC<GraphsTabProps> = () => {
           <div className="card-header-row">
             <div className="header-title-group">
               <TrendingUp size={16} className="text-engro-green" />
-              <h4>Daily Downtime Curve (Aug 1 - Aug 20)</h4>
+              <h4>Daily Downtime Curve ({activePeriod.name})</h4>
             </div>
-            <span className="badge-meta">20 Reporting Days</span>
+            <span className="badge-meta">{timelineData.length} Reporting Days</span>
           </div>
 
           <div className="chart-wrapper" style={{ width: '100%', height: 210 }}>
@@ -143,7 +142,7 @@ export const GraphsTab: React.FC<GraphsTabProps> = () => {
           <div className="card-header-row">
             <div className="header-title-group">
               <BarChart2 size={16} className="text-engro-blue" />
-              <h4>Major Root Causes (Total Hours)</h4>
+              <h4>Major Root Causes ({activePeriod.name})</h4>
             </div>
             <span className="badge-meta">Top Drivers</span>
           </div>
@@ -213,12 +212,12 @@ export const GraphsTab: React.FC<GraphsTabProps> = () => {
       <div className="corp-card root-cause-breakdown-card">
         <div className="card-header-row">
           <h4>Detailed Root Cause Summary</h4>
-          <span className="table-count-tag">{REAL_ENGRO_DATA.topReasons.length} Categories</span>
+          <span className="table-count-tag">{activePeriod.topReasons.length} Categories</span>
         </div>
 
         <div className="reasons-list-container">
-          {REAL_ENGRO_DATA.topReasons.map((r, index) => {
-            const sharePercent = ((r.totalDtHours / REAL_ENGRO_DATA.summary.totalDowntimeHours) * 100).toFixed(1);
+          {activePeriod.topReasons.map((r, index) => {
+            const sharePercent = ((r.totalDtHours / Math.max(1, activePeriod.totalDtHours)) * 100).toFixed(1);
             return (
               <div key={r.reason} className="reason-row-item">
                 <div className="reason-rank">#{index + 1}</div>
@@ -228,7 +227,7 @@ export const GraphsTab: React.FC<GraphsTabProps> = () => {
                 </div>
                 <div className="reason-stats">
                   <span className="reason-hours">{r.totalDtHours.toLocaleString()}h</span>
-                  <span className="reason-share">{sharePercent}% of total</span>
+                  <span className="reason-share">{sharePercent}% of period</span>
                 </div>
               </div>
             );

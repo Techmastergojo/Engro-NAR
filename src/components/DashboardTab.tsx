@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import type { UserRole, TimelineFilter, SiteCatalogItem } from '../types';
-import { REAL_ENGRO_DATA, MBU_NAMES } from '../utils/realData';
+import type { UserRole, TimelineFilter, SiteCatalogItem, HistoricalPeriod } from '../types';
+import { MBU_NAMES } from '../utils/realData';
 import {
   Activity,
   Radio,
@@ -16,12 +16,14 @@ import { soundFX } from '../utils/soundEffects';
 
 interface DashboardTabProps {
   currentRole: UserRole;
+  activePeriod: HistoricalPeriod;
   onNavigateToSites: (searchQuery?: string) => void;
   onNavigateToGraphs: () => void;
 }
 
 export const DashboardTab: React.FC<DashboardTabProps> = ({
   currentRole,
+  activePeriod,
   onNavigateToSites,
   onNavigateToGraphs
 }) => {
@@ -29,13 +31,13 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
   const isAdmin = currentRole === 'admin';
 
-  // Filter sites according to role
+  // Filter sites according to role from active period
   const scopedSites: SiteCatalogItem[] = useMemo(() => {
     if (isAdmin) {
-      return REAL_ENGRO_DATA.allSites;
+      return activePeriod.allSites;
     }
-    return REAL_ENGRO_DATA.allSites.filter((s) => s.mbu === currentRole);
-  }, [currentRole, isAdmin]);
+    return activePeriod.allSites.filter((s) => s.mbu === currentRole);
+  }, [currentRole, isAdmin, activePeriod]);
 
   // Aggregate stats for scoped sites
   const totalDt = scopedSites.reduce((sum, s) => sum + s.totalDtHours, 0);
@@ -66,7 +68,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           </div>
           <div>
             <h3 className="scope-name">{MBU_NAMES[currentRole] || currentRole}</h3>
-            <span className="scope-sub">Performance Report &bull; August 2026</span>
+            <span className="scope-sub">{activePeriod.name} &bull; Live Telemetry</span>
           </div>
         </div>
       </div>
@@ -79,11 +81,11 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         </div>
         <div className="timeline-buttons-row">
           {[
-            { id: 'all', label: 'All Aug-26' },
-            { id: 'w1', label: 'Aug 1-5' },
-            { id: 'w2', label: 'Aug 6-10' },
-            { id: 'w3', label: 'Aug 11-15' },
-            { id: 'w4', label: 'Aug 16-20' }
+            { id: 'all', label: 'Full Month' },
+            { id: 'w1', label: 'Days 1-5' },
+            { id: 'w2', label: 'Days 6-10' },
+            { id: 'w3', label: 'Days 11-15' },
+            { id: 'w4', label: 'Days 16-20' }
           ].map((t) => (
             <button
               key={t.id}
@@ -182,7 +184,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           </div>
 
           <div className="mbu-benchmark-table">
-            {REAL_ENGRO_DATA.mbuBreakdown.map((m) => (
+            {activePeriod.mbuBreakdown.map((m) => (
               <div key={m.mbu} className="mbu-bench-row">
                 <div className="mbu-name-block">
                   <span className="mbu-tag">{m.mbu}</span>
