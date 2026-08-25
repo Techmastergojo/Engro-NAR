@@ -1,38 +1,94 @@
-const XLSX = require('./node_modules/xlsx');
 const fs = require('fs');
+const path = require('path');
 
-const wb = XLSX.readFile('./C4 Overall Performance Aug-2026 (1).xlsx');
+// Robust custom CSV parser supporting commas and newlines inside quotes
+function parseCSV(filePath) {
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`File not found: ${filePath}`);
+  }
+  const content = fs.readFileSync(filePath, 'utf8');
+  
+  const rows = [];
+  let currentField = '';
+  let inQuotes = false;
+  let currentRow = [];
+  
+  for (let i = 0; i < content.length; i++) {
+    const char = content[i];
+    const nextChar = content[i + 1];
+    
+    if (char === '"') {
+      if (inQuotes && nextChar === '"') {
+        currentField += '"';
+        i++; // skip next quote
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
+      currentRow.push(currentField.trim());
+      currentField = '';
+    } else if ((char === '\r' || char === '\n') && !inQuotes) {
+      if (char === '\r' && nextChar === '\n') {
+        i++; // skip \n
+      }
+      currentRow.push(currentField.trim());
+      rows.push(currentRow);
+      currentRow = [];
+      currentField = '';
+    } else {
+      currentField += char;
+    }
+  }
+  if (currentField || currentRow.length > 0) {
+    currentRow.push(currentField.trim());
+    rows.push(currentRow);
+  }
+  
+  if (rows.length === 0) return [];
+  
+  // Header is the first row, clean BOM
+  const rawHeaders = rows[0];
+  const headers = rawHeaders.map(h => h.replace(/^\ufeff/, '').trim());
+  
+  const records = [];
+  for (let i = 1; i < rows.length; i++) {
+    const row = {};
+    headers.forEach((header, idx) => {
+      row[header] = rows[i][idx] !== undefined ? rows[i][idx] : '';
+    });
+    records.push(row);
+  }
+  return records;
+}
 
-// Load sheets
-const rslSheet = wb.Sheets['Consolidated RSL Aug-26'];
-const siteWiseSheet = wb.Sheets['SiteWiseDT'];
-const narDaySheet = wb.Sheets['Site NAR-Day'];
-const dateWiseSheet = wb.Sheets['DateWiseDT'];
+// Load sheets from CSV files
+console.log('Loading CSV files from `./csv files data/`...');
+const rslRows = parseCSV('./csv files data/Consolidated RSL Aug-26.csv');
+const siteWiseRows = parseCSV('./csv files data/SiteWiseDT.csv');
+const narDayRows = parseCSV('./csv files data/Site NAR-Day.csv');
+const dateWiseRows = parseCSV('./csv files data/DateWiseDT.csv');
 
-const rslRows = XLSX.utils.sheet_to_json(rslSheet);
-const siteWiseRows = XLSX.utils.sheet_to_json(siteWiseSheet);
-const narDayRows = XLSX.utils.sheet_to_json(narDaySheet);
-const dateWiseRows = XLSX.utils.sheet_to_json(dateWiseSheet);
+console.log('Loaded RSL Rows:', rslRows.length);
+console.log('Loaded SiteWiseDT Rows:', siteWiseRows.length);
+console.log('Loaded Site NAR-Day Rows:', narDayRows.length);
+console.log('Loaded DateWiseDT Rows:', dateWiseRows.length);
 
-console.log('Total raw RSL rows:', rslRows.length);
-console.log('SiteWiseDT rows:', siteWiseRows.length);
-console.log('Site NAR-Day rows:', narDayRows.length);
-console.log('DateWiseDT rows:', dateWiseRows.length);
+// Helper for date extraction
+function normalizeDateStr(dateStr) {
+  if (!dateStr) return '2026-08-01';
+  return dateStr.split(' ')[0];
+}
 
-// Helper for excel date conversion
-function excelDateToDateStr(excelDate) {
-  if (!excelDate) return '2026-08-01';
-  const num = typeof excelDate === 'number' ? excelDate : parseFloat(excelDate);
-  if (isNaN(num)) return '2026-08-01';
-  const jsDate = new Date((num - 25569) * 86400 * 1000);
-  const y = jsDate.getUTCFullYear();
-  const m = String(jsDate.getUTCMonth() + 1).padStart(2, '0');
-  const d = String(jsDate.getUTCDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+// Helper to look up daily column in CSV rows
+function getDailyValue(row, dateStr) {
+  const key1 = `${dateStr} 00:00:00`;
+  const key2 = dateStr;
+  if (row[key1] !== undefined && row[key1] !== '') return parseFloat(row[key1]);
+  if (row[key2] !== undefined && row[key2] !== '') return parseFloat(row[key2]);
+  return undefined;
 }
 
 // 1. Identify the Deodar sites from RSL sheet
-// A site is a Deodar site if it has at least one row with Deodar/NonDeodar as 'Deodar'
 const deodarSiteCodes = new Set();
 rslRows.forEach(row => {
   const isDeodar = String(row['Deodar/NonDeodar'] || '').toLowerCase().trim() === 'deodar';
@@ -50,7 +106,7 @@ const deodarRslRows = rslRows.filter(row => {
 });
 console.log('Filtered RSL Deodar rows:', deodarRslRows.length);
 
-// Map Site Code to its SiteWiseDT and Site NAR-Day info
+// Map Site Code to its SiteWiseDT and Site NAR-Day rows
 const siteWiseMap = {};
 siteWiseRows.forEach(row => {
   const code = String(row['Site Code'] || '').trim().toLowerCase();
@@ -67,12 +123,12 @@ narDayRows.forEach(row => {
   }
 });
 
-// Map Excel Date to DateWiseDT row
+// Map Date to DateWiseDT row
 const dateWiseMap = {};
 dateWiseRows.forEach(row => {
   const mbuVal = row['MBU'];
   if (mbuVal) {
-    const dateStr = excelDateToDateStr(mbuVal);
+    const dateStr = normalizeDateStr(mbuVal);
     dateWiseMap[dateStr] = row;
   }
 });
@@ -81,7 +137,6 @@ const siteMap = {};
 const reasonMap = {};
 const mbuMap = {};
 const dailyTimelineMap = {};
-let totalDowntimeHours = 0;
 
 const allIncidents = [];
 
@@ -92,29 +147,22 @@ deodarRslRows.forEach((row, i) => {
   const siteName = rawSiteName.replace(/^[A-Z0-9]+__S_/, '').replace(/^[A-Z0-9]+_H_/, '').replace(/_/g, ' ');
   const mbu = String(row['MBU#'] || row['Region'] || 'C4-GUJ-01').trim();
   
-  // DT is in minutes, convert to hours!
+  // DT in RSL is in minutes, convert to hours
   const dtRaw = parseFloat(row['DT']) || 0;
   const dtHours = dtRaw / 60;
   
   const reason = String(row['Reasons'] || row['Reason Category'] || 'Commercial Power Grid').trim();
   const category = String(row['Reason Category'] || row['General'] || 'Grid Power').trim();
-  const dateStr = excelDateToDateStr(row['Occurring']);
+  const dateStr = normalizeDateStr(row['Occurring']);
   const vendor = String(row['Vendor'] || 'Huawei');
   const siteType = String(row['SiteType'] || 'Macro');
   const priority = String(row['Priority'] || 'General');
 
   // Build site map
   if (!siteMap[siteCode]) {
-    // Get pre-calculated values if they exist
     const swRow = siteWiseMap[siteCode] || {};
-    const ndRow = narDayMap[siteCode] || {};
-    
-    // Fallback computed availability if not in SiteWiseDT
-    const cells = parseInt(row['NoofCells'] || row['Cells'] || 3);
-    const fallbackAvail = 99.0;
-    
-    const excelAvail = swRow['Total NAR'] !== undefined ? parseFloat(swRow['Total NAR']) * 100 : fallbackAvail;
-    const excelDtHours = swRow['TDT'] !== undefined ? parseFloat(swRow['TDT']) / 60 : 0;
+    const excelAvail = swRow['Total NAR'] !== undefined && swRow['Total NAR'] !== '' ? parseFloat(swRow['Total NAR']) * 100 : 99.0;
+    const excelDtHours = swRow['TDT'] !== undefined && swRow['TDT'] !== '' ? parseFloat(swRow['TDT']) / 60 : 0;
 
     siteMap[siteCode] = {
       siteCode: siteCodeRaw,
@@ -141,7 +189,7 @@ deodarRslRows.forEach((row, i) => {
   reasonMap[reason].totalDtHours += dtHours;
   reasonMap[reason].incidentCount += 1;
 
-  // MBU Map (temp holder, we will compute final metrics later)
+  // MBU Map
   if (!mbuMap[mbu]) {
     mbuMap[mbu] = { mbu, totalDtHours: 0, incidentCount: 0, siteCount: new Set(), availSum: 0 };
   }
@@ -159,7 +207,7 @@ deodarRslRows.forEach((row, i) => {
 
   if (i < 3000) {
     const swRow = siteWiseMap[siteCode] || {};
-    const excelAvail = swRow['Total NAR'] !== undefined ? parseFloat(swRow['Total NAR']) * 100 : 99.0;
+    const excelAvail = swRow['Total NAR'] !== undefined && swRow['Total NAR'] !== '' ? parseFloat(swRow['Total NAR']) * 100 : 99.0;
     allIncidents.push({
       id: `RSL-${i + 1}`,
       siteId: siteCodeRaw,
@@ -187,9 +235,8 @@ const allSitesCatalog = Object.values(siteMap).map(s => {
   // Construct daily timeline with real NAR from Site NAR-Day
   const ndRow = narDayMap[s.siteCode.toLowerCase()] || {};
   const dailyTimeline = Object.entries(s.dailyDt).map(([d, h]) => {
-    const dayNum = parseInt(d.split('-')[2] || '1', 10);
-    const dayKey = `${dayNum}-Aug`;
-    const excelDailyNar = ndRow[dayKey] !== undefined ? parseFloat(ndRow[dayKey]) * 100 : 100;
+    const excelDailyNarVal = getDailyValue(ndRow, d);
+    const excelDailyNar = excelDailyNarVal !== undefined ? excelDailyNarVal * 100 : 100;
     return {
       date: d,
       hours: Number(h.toFixed(1)),
@@ -240,10 +287,7 @@ const reasonsFormatted = Object.values(reasonMap).map(r => ({
 
 // Format Daily Timeline with MBU NAR or default
 const dailyFormatted = Object.values(dailyTimelineMap).map(d => {
-  // Try to find NAR from DateWiseDT
   const dwRow = dateWiseMap[d.date] || {};
-  
-  // Calculate average daily NAR across all MBUs in DateWiseDT
   let narPercent = 99.85;
   const mbuAvails = [];
   Object.keys(dwRow).forEach(k => {
@@ -288,5 +332,6 @@ const exportData = {
   sampleIncidents: allIncidents
 };
 
+// Write output
 fs.writeFileSync('./src/utils/realEngroData.json', JSON.stringify(exportData, null, 2));
-console.log(`Successfully compiled Deodar-only catalog for ${allSitesCatalog.length} sites into realEngroData.json!`);
+console.log(`Successfully compiled Deodar-only catalog for ${allSitesCatalog.length} sites into realEngroData.json from CSV files!`);
