@@ -75,7 +75,7 @@ export const SitesTab: React.FC<SitesTabProps> = ({
 
       const rangeDtHours = filteredDays.reduce((sum, d) => sum + d.hours, 0);
       const totalPossibleHours = Math.max(1, filteredDays.length) * 24;
-      const rangeNar = Math.max(70, Number(((totalPossibleHours - rangeDtHours) / totalPossibleHours * 100).toFixed(2)));
+      const rangeNar = Math.max(0, Number(((totalPossibleHours - rangeDtHours) / totalPossibleHours * 100).toFixed(2)));
 
       return {
         ...site,
@@ -123,7 +123,7 @@ export const SitesTab: React.FC<SitesTabProps> = ({
     const rangeDt = filteredDays.reduce((sum, d) => sum + d.hours, 0);
     const rangeDays = siteModalSelectedDay !== 'all' ? 1 : Math.max(1, filteredDays.length);
     const totalPossibleHours = rangeDays * 24;
-    const rangeNar = Math.max(70, Number(((totalPossibleHours - rangeDt) / totalPossibleHours * 100).toFixed(2)));
+    const rangeNar = Math.max(0, Number(((totalPossibleHours - rangeDt) / totalPossibleHours * 100).toFixed(2)));
 
     return {
       downtimeHours: Number(rangeDt.toFixed(1)),

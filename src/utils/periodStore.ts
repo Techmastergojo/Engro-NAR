@@ -7,7 +7,7 @@ const GLOBAL_6_MONTH_NAR: MonthlyNarRecord[] = [
   { monthKey: '2026-05', monthLabel: 'May 2026', narPercent: 99.85, totalDowntimeHours: 3520, totalAlarms: 3200 },
   { monthKey: '2026-06', monthLabel: 'Jun 2026', narPercent: 99.83, totalDowntimeHours: 3890, totalAlarms: 3610 },
   { monthKey: '2026-07', monthLabel: 'Jul 2026', narPercent: 99.86, totalDowntimeHours: 3140, totalAlarms: 2980 },
-  { monthKey: '2026-08', monthLabel: 'Aug 2026', narPercent: 99.88, totalDowntimeHours: 2930.5, totalAlarms: 2796 }
+  { monthKey: '2026-08', monthLabel: 'Aug 2026', narPercent: 98.47, totalDowntimeHours: 17210.1, totalAlarms: 33172 }
 ];
 
 // Helper to compute 6-month NAR for any site based on baseline availability
@@ -15,7 +15,7 @@ function computeSite6MonthNar(siteAvail: number, siteTotalDt: number): MonthlyNa
   const variations = [-0.14, 0.08, -0.05, 0.12, -0.02, 0];
   return GLOBAL_6_MONTH_NAR.map((m, idx) => {
     const v = variations[idx] || 0;
-    const computedNar = Math.min(100, Math.max(70, Number((siteAvail + v).toFixed(2))));
+    const computedNar = Math.min(100, Math.max(0, Number((siteAvail + v).toFixed(2))));
     return {
       monthKey: m.monthKey,
       monthLabel: m.monthLabel,
@@ -29,22 +29,15 @@ function computeSite6MonthNar(siteAvail: number, siteTotalDt: number): MonthlyNa
 // Ensure all raw sites have their 6-Month NAR & daily NAR initialized
 const rawSites = (realDataJson as unknown as { allSites: SiteCatalogItem[] }).allSites || [];
 const enrichedSites: SiteCatalogItem[] = rawSites.map((s) => {
-  let siteAvail = s.availability || 99.0;
-  let siteDt = s.totalDtHours || 0;
-
-  // Explicitly set site 9515 / GUJ9515 to 80.00% NAR as requested
-  if (s.siteCode.includes('9515') || s.siteName.includes('9515')) {
-    siteAvail = 80.00;
-    siteDt = 96.0;
-  }
+  const siteAvail = s.availability || 99.0;
+  const siteDt = s.totalDtHours || 0;
 
   const nar6Months = computeSite6MonthNar(siteAvail, siteDt);
 
   const enrichedTimeline = (s.dailyTimeline || []).map((d) => {
-    const dailyNar = s.siteCode.includes('9515') ? 80.00 : Number(((24 - Math.min(24, d.hours)) / 24 * 100).toFixed(2));
     return {
       ...d,
-      narPercent: dailyNar
+      narPercent: d.narPercent !== undefined ? d.narPercent : Number(((24 - Math.min(24, d.hours)) / 24 * 100).toFixed(2))
     };
   });
 
@@ -60,13 +53,10 @@ const enrichedSites: SiteCatalogItem[] = rawSites.map((s) => {
 
 // Enrich daily timeline with daily NAR %
 const rawTimeline = (realDataJson as unknown as { dailyTimeline: DailySummary[] }).dailyTimeline || [];
-const totalSitesCount = enrichedSites.length || 1239;
 const enrichedDailyTimeline: DailySummary[] = rawTimeline.map((d) => {
-  const totalHoursPossible = totalSitesCount * 24;
-  const dailyNar = Math.max(90, Number(((totalHoursPossible - d.totalDtHours) / totalHoursPossible * 100).toFixed(2)));
   return {
     ...d,
-    narPercent: dailyNar
+    narPercent: d.narPercent !== undefined ? d.narPercent : 99.85
   };
 });
 

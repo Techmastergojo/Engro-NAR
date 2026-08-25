@@ -75,7 +75,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
       const rangeDtHours = filteredDays.reduce((sum, d) => sum + d.hours, 0);
       const totalPossibleHours = Math.max(1, filteredDays.length) * 24;
-      const rangeAvail = Math.max(70, Number(((totalPossibleHours - rangeDtHours) / totalPossibleHours * 100).toFixed(2)));
+      const rangeAvail = Math.max(0, Number(((totalPossibleHours - rangeDtHours) / totalPossibleHours * 100).toFixed(2)));
 
       return {
         ...site,
