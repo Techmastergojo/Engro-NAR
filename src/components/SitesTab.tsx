@@ -1,20 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import type { UserRole, SiteCatalogItem, HistoricalPeriod, GlobalTimelineFilter } from '../types';
-import {
-  Search,
-  Filter,
-  Radio,
-  Zap,
-  X,
-  ShieldCheck,
-  Wrench,
-  AlertTriangle,
-  Sparkles,
-  Calendar,
-  SlidersHorizontal,
-  TrendingUp
-} from 'lucide-react';
-
+import { Search, Filter, Radio, Zap, X, Wrench } from 'lucide-react';
 import {
   AreaChart,
   Area,
@@ -24,13 +10,11 @@ import {
   ResponsiveContainer,
   ReferenceLine
 } from 'recharts';
-import { soundFX } from '../utils/soundEffects';
 
 interface SitesTabProps {
   currentRole: UserRole;
   activePeriod: HistoricalPeriod;
   timelineFilter: GlobalTimelineFilter;
-  onOpenTimelineModal: () => void;
   initialQuery?: string;
 }
 
@@ -38,7 +22,6 @@ export const SitesTab: React.FC<SitesTabProps> = ({
   currentRole,
   activePeriod,
   timelineFilter,
-  onOpenTimelineModal,
   initialQuery = ''
 }) => {
   const [searchTerm, setSearchTerm] = useState(initialQuery);
@@ -46,13 +29,10 @@ export const SitesTab: React.FC<SitesTabProps> = ({
   const [selectedSite, setSelectedSite] = useState<SiteCatalogItem | null>(null);
   const [pageLimit, setPageLimit] = useState<number>(25);
 
-  // Site Modal NAR View Mode: '6months' | 'daily'
-  const [siteModalNarMode, setSiteModalNarMode] = useState<'6months' | 'daily'>('6months');
-  const [siteModalSelectedDay, setSiteModalSelectedDay] = useState<string>('all');
-
-  // Custom date range state for site modal
-  const [siteModalFromDate, setSiteModalFromDate] = useState<string>(timelineFilter.startDate);
-  const [siteModalToDate, setSiteModalToDate] = useState<string>(timelineFilter.endDate);
+  // Modal Timeline State (Local to site detail view)
+  const [modalTimelineMode, setModalTimelineMode] = useState<'daily' | 'six_months'>('daily');
+  const [modalFromDate, setModalFromDate] = useState<string>(timelineFilter.startDate);
+  const [modalToDate, setModalToDate] = useState<string>(timelineFilter.endDate);
 
   const mbuList = useMemo(() => {
     const set = new Set(activePeriod.allSites.map((s) => s.mbu).filter(Boolean));
@@ -67,9 +47,6 @@ export const SitesTab: React.FC<SitesTabProps> = ({
       }
 
       const filteredDays = site.dailyTimeline.filter((d) => {
-        if (timelineFilter.mode === 'single' && timelineFilter.singleDate) {
-          return d.date === timelineFilter.singleDate;
-        }
         return d.date >= timelineFilter.startDate && d.date <= timelineFilter.endDate;
       });
 
@@ -80,8 +57,7 @@ export const SitesTab: React.FC<SitesTabProps> = ({
       return {
         ...site,
         totalDtHours: Number(rangeDtHours.toFixed(1)),
-        availability: rangeNar,
-        rangeDaysCount: filteredDays.length
+        availability: rangeNar
       };
     });
   }, [activePeriod, timelineFilter]);
@@ -102,35 +78,70 @@ export const SitesTab: React.FC<SitesTabProps> = ({
 
   const displayedSites = filteredSites.slice(0, pageLimit);
 
-  // Compute stats for modal
-  const getModalSiteStats = (site: SiteCatalogItem) => {
-    if (!site.dailyTimeline || site.dailyTimeline.length === 0) {
+  // Site Modal Stats based on local modal date range / mode
+  const modalSiteStats = useMemo(() => {
+    if (!selectedSite) return null;
+
+    if (modalTimelineMode === 'six_months') {
+      const totalDt = selectedSite.nar6Months?.reduce((sum, m) => sum + m.totalDowntimeHours, 0) || 0;
+      const avgNar = selectedSite.nar6Months && selectedSite.nar6Months.length > 0
+        ? Number((selectedSite.nar6Months.reduce((sum, m) => sum + m.narPercent, 0) / selectedSite.nar6Months.length).toFixed(2))
+        : selectedSite.availability;
+      
+      const chartData = selectedSite.nar6Months?.map((m) => ({
+        label: m.monthLabel.split(' ')[0],
+        narPercent: m.narPercent,
+        downtimeHours: m.totalDowntimeHours
+      })) || [];
+
       return {
-        downtimeHours: site.totalDtHours,
-        daysCount: 20,
-        availability: site.availability,
-        dailyBars: []
+        avgNar,
+        totalDtHours: Number(totalDt.toFixed(1)),
+        chartData
+      };
+    } else {
+      const filteredDays = selectedSite.dailyTimeline?.filter((d) => {
+        return d.date >= modalFromDate && d.date <= modalToDate;
+      }) || [];
+
+      const totalDt = filteredDays.reduce((sum, d) => sum + d.hours, 0);
+      const totalHours = Math.max(1, filteredDays.length) * 24;
+      const avgNar = Math.max(0, Number(((totalHours - totalDt) / totalHours * 100).toFixed(2)));
+
+      const chartData = filteredDays.map((d) => {
+        const dayNum = parseInt(d.date.split('-')[2] || '1', 10);
+        const dayNar = Number(((24 - Math.min(24, d.hours)) / 24 * 100).toFixed(2));
+        return {
+          label: `Aug ${dayNum}`,
+          narPercent: dayNar,
+          downtimeHours: Number(d.hours.toFixed(1))
+        };
+      });
+
+      return {
+        avgNar,
+        totalDtHours: Number(totalDt.toFixed(1)),
+        chartData
       };
     }
+  }, [selectedSite, modalTimelineMode, modalFromDate, modalToDate]);
 
-    const filteredDays = site.dailyTimeline.filter((d) => {
-      if (siteModalSelectedDay !== 'all') {
-        return d.date === siteModalSelectedDay;
-      }
-      return d.date >= siteModalFromDate && d.date <= siteModalToDate;
-    });
+  const handleApplyModalPreset = (days: number | '6m') => {
+    if (days === '6m') {
+      setModalTimelineMode('six_months');
+    } else {
+      setModalTimelineMode('daily');
+      const end = new Date('2026-08-20');
+      const start = new Date(end);
+      start.setDate(end.getDate() - (days - 1));
+      
+      const pad = (num: number) => String(num).padStart(2, '0');
+      const startStr = `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`;
+      const endStr = `${end.getFullYear()}-${pad(end.getMonth() + 1)}-${pad(end.getDate())}`;
 
-    const rangeDt = filteredDays.reduce((sum, d) => sum + d.hours, 0);
-    const rangeDays = siteModalSelectedDay !== 'all' ? 1 : Math.max(1, filteredDays.length);
-    const totalPossibleHours = rangeDays * 24;
-    const rangeNar = Math.max(0, Number(((totalPossibleHours - rangeDt) / totalPossibleHours * 100).toFixed(2)));
-
-    return {
-      downtimeHours: Number(rangeDt.toFixed(1)),
-      daysCount: rangeDays,
-      availability: rangeNar,
-      dailyBars: filteredDays
-    };
+      setModalFromDate(startStr);
+      setModalToDate(endStr);
+    }
   };
 
   const getSiteRecommendation = (site: SiteCatalogItem): string => {
@@ -153,35 +164,12 @@ export const SitesTab: React.FC<SitesTabProps> = ({
     return 'Conduct comprehensive site infrastructure and optical backhaul diagnostic audit.';
   };
 
-  const timelineLabel = timelineFilter.mode === 'single'
-    ? `Single Day: ${timelineFilter.singleDate}`
-    : timelineFilter.mode === 'all'
-    ? `Full Month (Aug 1 - Aug 20)`
-    : `From ${timelineFilter.startDate} To ${timelineFilter.endDate}`;
+  const timelineLabel = timelineFilter.mode === 'six_months'
+    ? '6 Months (Mar - Aug 2026)'
+    : `Range: ${timelineFilter.startDate} to ${timelineFilter.endDate}`;
 
   return (
     <div className="tab-content sites-content">
-      {/* Prominent Timeline Filter Bar */}
-      <div className="corp-card timeline-control-bar" onClick={onOpenTimelineModal}>
-        <div className="timeline-control-left">
-          <div className="timeline-icon-box">
-            <Calendar size={18} className="text-engro-green" />
-          </div>
-          <div className="timeline-text-group">
-            <div className="timeline-micro-tag">
-              <span>TIMELINE SCOPE:</span>
-              <span className="timeline-status-active">APPLIED</span>
-            </div>
-            <strong className="timeline-range-text">{timelineLabel}</strong>
-          </div>
-        </div>
-
-        <button className="open-timeline-modal-btn">
-          <SlidersHorizontal size={14} />
-          <span>Change Dates</span>
-        </button>
-      </div>
-
       {/* Search & Filter Header */}
       <div className="corp-card search-card">
         <div className="search-input-box">
@@ -189,7 +177,7 @@ export const SitesTab: React.FC<SitesTabProps> = ({
           <input
             type="text"
             className="styled-search-field"
-            placeholder="Search any site code (e.g. RUR6564, ALC6522) or name..."
+            placeholder="Search site code or name..."
             value={searchTerm}
             onChange={(e) => {
               setSearchTerm(e.target.value);
@@ -211,12 +199,11 @@ export const SitesTab: React.FC<SitesTabProps> = ({
               key={m}
               className={`filter-pill-btn ${selectedMbu === m ? 'active' : ''}`}
               onClick={() => {
-                soundFX.playClick();
                 setSelectedMbu(m);
                 setPageLimit(25);
               }}
             >
-              {m === 'all' ? 'All C4 MBUs' : m}
+              {m === 'all' ? 'All C4' : m}
             </button>
           ))}
         </div>
@@ -227,31 +214,28 @@ export const SitesTab: React.FC<SitesTabProps> = ({
         <span>
           Showing <strong>{displayedSites.length}</strong> of {filteredSites.length} Towers ({timelineLabel})
         </span>
-        <span className="sort-tag">Ranked by Outage Hours</span>
       </div>
 
-      {/* Sites List (Displaying Site NAR %) */}
+      {/* Sites List */}
       <div className="sites-catalog-list">
         {displayedSites.length === 0 ? (
           <div className="corp-card empty-search-card">
             <Radio size={32} className="text-muted" />
             <h4>No Sites Found</h4>
-            <p>No telecom sites match your search keyword or MBU filter.</p>
+            <p>No telecom sites match your search.</p>
           </div>
         ) : (
           displayedSites.map((site) => {
-            const isGood = site.availability >= 99.0;
+            const isGood = site.availability >= 99.90;
             return (
               <div
                 key={site.siteCode}
-                className="corp-card site-card-row"
+                className="corp-card site-card-row cursor-pointer"
                 onClick={() => {
-                  soundFX.playClick();
                   setSelectedSite(site);
-                  setSiteModalNarMode('6months');
-                  setSiteModalSelectedDay('all');
-                  setSiteModalFromDate(timelineFilter.startDate);
-                  setSiteModalToDate(timelineFilter.endDate);
+                  setModalTimelineMode('daily');
+                  setModalFromDate(timelineFilter.startDate);
+                  setModalToDate(timelineFilter.endDate);
                 }}
               >
                 <div className="site-row-left">
@@ -272,14 +256,9 @@ export const SitesTab: React.FC<SitesTabProps> = ({
                 </div>
 
                 <div className="site-row-right">
-                  <span className="site-dt-text">{site.totalDtHours.toLocaleString()}h DT</span>
+                  <span className="site-dt-text text-coral">{site.totalDtHours}h DT</span>
                   <span className={`site-avail-badge ${isGood ? 'avail-good' : 'avail-low'}`}>
                     {site.availability}% NAR
-                  </span>
-                  
-                  <span className="site-timeline-indicator">
-                    <Calendar size={10} />
-                    <span>{timelineLabel}</span>
                   </span>
                 </div>
               </div>
@@ -288,21 +267,18 @@ export const SitesTab: React.FC<SitesTabProps> = ({
         )}
       </div>
 
-      {/* Load More Pagination */}
+      {/* Pagination */}
       {displayedSites.length < filteredSites.length && (
         <button
           className="load-more-btn"
-          onClick={() => {
-            soundFX.playClick();
-            setPageLimit((prev) => prev + 25);
-          }}
+          onClick={() => setPageLimit((prev) => prev + 25)}
         >
           Load Next 25 Sites ({filteredSites.length - displayedSites.length} remaining)
         </button>
       )}
 
-      {/* In-Depth Site Diagnostic Modal with 6-Month NAR & Everyday Dropdown */}
-      {selectedSite && (
+      {/* In-Depth Site Diagnostic Modal */}
+      {selectedSite && modalSiteStats && (
         <div className="modal-backdrop" onClick={() => setSelectedSite(null)}>
           <div className="site-detail-modal" onClick={(e) => e.stopPropagation()}>
             <div className="site-modal-header">
@@ -319,173 +295,130 @@ export const SitesTab: React.FC<SitesTabProps> = ({
               </button>
             </div>
 
-            {/* SITE NAR VIEW TOGGLE: 6 Months vs Everyday */}
-            <div className="site-modal-nar-toggle-row">
-              <div className="site-nar-title-block">
-                <TrendingUp size={14} className="text-engro-green" />
-                <span className="site-nar-title">SITE NAR TELEMETRY</span>
+            {/* Same timeline control features inside Modal */}
+            <div className="corp-card modal-timeline-panel">
+              <span className="panel-lbl">Site Search Timeline:</span>
+              <div className="timeline-search-row">
+                <div className="timeline-input-group">
+                  <label className="timeline-input-label">From</label>
+                  <input
+                    type="date"
+                    className="styled-date-input"
+                    value={modalTimelineMode === 'six_months' ? '2026-08-01' : modalFromDate}
+                    disabled={modalTimelineMode === 'six_months'}
+                    onChange={(e) => {
+                      setModalTimelineMode('daily');
+                      setModalFromDate(e.target.value);
+                    }}
+                  />
+                </div>
+                <div className="timeline-input-group">
+                  <label className="timeline-input-label">To</label>
+                  <input
+                    type="date"
+                    className="styled-date-input"
+                    value={modalTimelineMode === 'six_months' ? '2026-08-20' : modalToDate}
+                    disabled={modalTimelineMode === 'six_months'}
+                    onChange={(e) => {
+                      setModalTimelineMode('daily');
+                      setModalToDate(e.target.value);
+                    }}
+                  />
+                </div>
               </div>
-              <div className="nar-mode-pills">
+
+              {/* Premade Range Presets for Modal */}
+              <div className="timeline-presets-row">
                 <button
-                  className={`nar-mode-btn ${siteModalNarMode === '6months' ? 'active' : ''}`}
-                  onClick={() => {
-                    soundFX.playClick();
-                    setSiteModalNarMode('6months');
-                  }}
+                  className={`preset-btn ${modalTimelineMode !== 'six_months' && modalFromDate === '2026-08-18' ? 'active' : ''}`}
+                  onClick={() => handleApplyModalPreset(3)}
                 >
-                  6 Months Trend
+                  3 Days
                 </button>
                 <button
-                  className={`nar-mode-btn ${siteModalNarMode === 'daily' ? 'active' : ''}`}
-                  onClick={() => {
-                    soundFX.playClick();
-                    setSiteModalNarMode('daily');
-                  }}
+                  className={`preset-btn ${modalTimelineMode !== 'six_months' && modalFromDate === '2026-08-14' ? 'active' : ''}`}
+                  onClick={() => handleApplyModalPreset(7)}
                 >
-                  Daily Breakdown
+                  7 Days
+                </button>
+                <button
+                  className={`preset-btn ${modalTimelineMode !== 'six_months' && modalFromDate === '2026-08-06' ? 'active' : ''}`}
+                  onClick={() => handleApplyModalPreset(15)}
+                >
+                  15 Days
+                </button>
+                <button
+                  className={`preset-btn ${modalTimelineMode !== 'six_months' && modalFromDate === '2026-08-01' ? 'active' : ''}`}
+                  onClick={() => handleApplyModalPreset(20)}
+                >
+                  1 Month
+                </button>
+                <button
+                  className={`preset-btn ${modalTimelineMode === 'six_months' ? 'active' : ''}`}
+                  onClick={() => handleApplyModalPreset('6m')}
+                >
+                  6 Months
                 </button>
               </div>
             </div>
 
-            {/* 6-MONTH SITE NAR VIEW (DEFAULT) */}
-            {siteModalNarMode === '6months' ? (
-              <div className="site-modal-6months-box">
-                <div className="site-sla-highlight-card">
-                  <div className="sla-score-left">
-                    <span className="sla-micro-lbl">CURRENT MONTH NAR</span>
-                    <span className={`sla-large-score ${selectedSite.availability >= 99.0 ? 'text-engro-green' : 'text-coral'}`}>
-                      {selectedSite.availability}%
-                    </span>
-                  </div>
-                  <div className="sla-grade-right">
-                    {selectedSite.availability >= 99.0 ? (
-                      <div className="grade-pill grade-pass">
-                        <ShieldCheck size={14} />
-                        <span>SLA Compliant</span>
-                      </div>
-                    ) : (
-                      <div className="grade-pill grade-fail">
-                        <AlertTriangle size={14} />
-                        <span>High Outage Risk</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* 6-Month Site Chart */}
-                <div className="chart-wrapper" style={{ width: '100%', height: 140, marginTop: 6 }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={selectedSite.nar6Months || []} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-                      <defs>
-                        <linearGradient id="siteNarGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#00A859" stopOpacity={0.4} />
-                          <stop offset="95%" stopColor="#00A859" stopOpacity={0.0} />
-                        </linearGradient>
-                      </defs>
-                      <XAxis dataKey="monthLabel" stroke="#64748B" fontSize={9} tickLine={false} />
-                      <YAxis domain={[98.5, 100]} stroke="#64748B" fontSize={9} tickLine={false} />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: '#0F172A',
-                          borderColor: '#00A859',
-                          borderRadius: '6px',
-                          color: '#F8FAFC',
-                          fontSize: '10.5px'
-                        }}
-                        formatter={(val) => [`${val}% NAR`, 'Site Availability']}
-                      />
-                      <ReferenceLine y={99.90} stroke="#F7941D" strokeDasharray="3 3" />
-                      <Area
-                        type="monotone"
-                        dataKey="narPercent"
-                        stroke="#00A859"
-                        strokeWidth={2}
-                        fillOpacity={1}
-                        fill="url(#siteNarGrad)"
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-
-                {/* 6-Month Mini Pills */}
-                <div className="site-6m-pills-row">
-                  {selectedSite.nar6Months?.map((m) => (
-                    <div key={m.monthKey} className="site-6m-pill">
-                      <span className="p-lbl">{m.monthLabel.split(' ')[0]}</span>
-                      <strong className="p-val">{m.narPercent}%</strong>
-                    </div>
-                  ))}
+            {/* Calculated Stats & Info */}
+            <div className="site-sla-highlight-card">
+              <div className="sla-score-left">
+                <span className="sla-micro-lbl">
+                  {modalTimelineMode === 'six_months' ? '6-MONTH AVG NAR' : 'RANGE AVG NAR'}
+                </span>
+                <span className={`sla-large-score ${modalSiteStats.avgNar >= 99.90 ? 'text-green' : 'text-coral'}`}>
+                  {modalSiteStats.avgNar}%
+                </span>
+              </div>
+              <div className="sla-grade-right">
+                <div className="sla-dt-summary">
+                  <strong>{modalSiteStats.totalDtHours}h</strong>
+                  <span>Downtime Hours</span>
                 </div>
               </div>
-            ) : (
-              /* DAILY BREAKDOWN WITH DAY DROPDOWN */
-              <div className="site-modal-daily-box">
-                <div className="site-day-select-group">
-                  <label>Select Day to Inspect NAR:</label>
-                  <select
-                    className="nar-styled-select"
-                    value={siteModalSelectedDay}
-                    onChange={(e) => {
-                      soundFX.playClick();
-                      setSiteModalSelectedDay(e.target.value);
-                    }}
-                  >
-                    <option value="all">Every Day Overview (Full Month)</option>
-                    {selectedSite.dailyTimeline?.map((d) => {
-                      const dayNum = parseInt(d.date.split('-')[2] || '1', 10);
-                      const dayNar = Number(((24 - Math.min(24, d.hours)) / 24 * 100).toFixed(2));
-                      return (
-                        <option key={d.date} value={d.date}>
-                          Aug {dayNum} ➔ {dayNar}% NAR ({d.hours}h DT)
-                        </option>
-                      );
-                    })}
-                  </select>
-                </div>
+            </div>
 
-                {/* Daily Computed Stats */}
-                {(() => {
-                  const modalStats = getModalSiteStats(selectedSite);
-                  return (
-                    <div className="site-daily-computed-card">
-                      <div className="computed-score-row">
-                        <div>
-                          <span className="c-sub">
-                            {siteModalSelectedDay === 'all' ? 'August 2026 Overall' : `Day ${siteModalSelectedDay.split('-')[2]} NAR`}
-                          </span>
-                          <div className="c-val-large">{modalStats.availability}% NAR</div>
-                        </div>
-                        <div className="c-dt-box">
-                          <span className="c-dt-num">{modalStats.downtimeHours}h</span>
-                          <span className="c-dt-lbl">Downtime</span>
-                        </div>
-                      </div>
-
-                      {/* Everyday Bar Breakdown */}
-                      <div className="site-bars-list">
-                        {modalStats.dailyBars.map((b) => {
-                          const dayNum = parseInt(b.date.split('-')[2] || '1', 10);
-                          const dayNar = Number(((24 - Math.min(24, b.hours)) / 24 * 100).toFixed(2));
-                          const barWidth = Math.min(100, Math.max(8, (b.hours / 24) * 100));
-                          return (
-                            <div key={b.date} className="site-bar-row">
-                              <span className="s-day">Aug {dayNum}</span>
-                              <div className="s-track">
-                                <div
-                                  className={`s-fill ${b.hours > 8 ? 'crit' : 'warn'}`}
-                                  style={{ width: `${barWidth}%` }}
-                                />
-                              </div>
-                              <span className="s-hrs">{dayNar}% NAR</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })()}
+            {/* Sleek Recharts Graph specifically for the site */}
+            <div className="modal-chart-card">
+              <div className="chart-header">
+                <span>NAR Availability Trend</span>
               </div>
-            )}
+              <div className="chart-wrapper" style={{ width: '100%', height: 130 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={modalSiteStats.chartData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="siteEmerald" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.25} />
+                        <stop offset="95%" stopColor="#10b981" stopOpacity={0.0} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="label" stroke="#71717a" fontSize={8.5} tickLine={false} />
+                    <YAxis domain={[90, 100]} stroke="#71717a" fontSize={8.5} tickLine={false} />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#18181b',
+                        borderColor: '#27272a',
+                        borderRadius: '4px',
+                        color: '#fafafa',
+                        fontSize: '10px'
+                      }}
+                      formatter={(val) => [`${val}% NAR`, 'Site Availability']}
+                    />
+                    <ReferenceLine y={99.90} stroke="#f97316" strokeDasharray="3 3" />
+                    <Area
+                      type="monotone"
+                      dataKey="narPercent"
+                      stroke="#10b981"
+                      strokeWidth={2}
+                      fillOpacity={1}
+                      fill="url(#siteEmerald)"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
 
             {/* Technical Specifications */}
             <div className="site-spec-box">
@@ -503,7 +436,7 @@ export const SitesTab: React.FC<SitesTabProps> = ({
               </div>
             </div>
 
-            {/* Top Root Causes for this Site */}
+            {/* Root Causes breakdown (Site Reasons) */}
             <div className="site-modal-reasons-section">
               <div className="section-title-row">
                 <Zap size={14} className="text-amber" />
@@ -540,12 +473,6 @@ export const SitesTab: React.FC<SitesTabProps> = ({
               <p className="recom-text">{getSiteRecommendation(selectedSite)}</p>
             </div>
 
-            {/* Signature Badge */}
-            <div className="engineer-signature-badge">
-              <Sparkles size={12} className="text-amber" />
-              <span>Telemetry Engine &bull; Powered By <strong>Hamza Tehseen Cheema</strong></span>
-            </div>
-
             <div className="site-modal-footer">
               <button className="close-action-btn" onClick={() => setSelectedSite(null)}>
                 Close Diagnostic Card
@@ -557,3 +484,4 @@ export const SitesTab: React.FC<SitesTabProps> = ({
     </div>
   );
 };
+

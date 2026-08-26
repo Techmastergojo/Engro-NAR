@@ -107,7 +107,7 @@ export interface HistoricalPeriod {
 }
 
 export interface GlobalTimelineFilter {
-  mode: 'all' | 'custom' | 'single';
+  mode: 'all' | 'custom' | 'single' | 'six_months';
   startDate: string; // YYYY-MM-DD
   endDate: string; // YYYY-MM-DD
   singleDate?: string;

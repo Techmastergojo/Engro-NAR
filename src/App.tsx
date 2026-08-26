@@ -5,11 +5,8 @@ import { syncDailyCloudTelemetry } from './utils/cloudSync';
 import { Header } from './components/Header';
 import { BottomNavBar } from './components/BottomNavBar';
 import { DashboardTab } from './components/DashboardTab';
-import { GraphsTab } from './components/GraphsTab';
 import { SitesTab } from './components/SitesTab';
-import { ImportTab } from './components/ImportTab';
 import { RoleSelectorModal } from './components/RoleSelectorModal';
-import { TimelineFilterModal } from './components/TimelineFilterModal';
 import { UpdateModal } from './components/UpdateModal';
 import { checkForAppUpdates, type UpdateInfo } from './utils/updateChecker';
 import './App.css';
@@ -26,8 +23,6 @@ export const App: React.FC = () => {
     startDate: '2026-08-01',
     endDate: '2026-08-20'
   });
-  const [showTimelineModal, setShowTimelineModal] = useState<boolean>(false);
-
   const [currentRole, setCurrentRole] = useState<UserRole>(() => {
     const saved = localStorage.getItem('engro_user_role');
     return (saved as UserRole) || 'admin';
@@ -56,12 +51,6 @@ export const App: React.FC = () => {
     checkUpdate();
   }, []);
 
-  const handleManualCheckUpdates = async () => {
-    const info = await checkForAppUpdates();
-    setUpdateInfo(info);
-    setShowUpdateModal(true);
-  };
-
   const handleSelectRole = (role: UserRole) => {
     setCurrentRole(role);
     localStorage.setItem('engro_user_role', role);
@@ -71,13 +60,6 @@ export const App: React.FC = () => {
   const handleSelectPeriod = (id: string) => {
     setActivePeriodIdState(id);
     setActivePeriodId(id);
-  };
-
-  const handlePeriodCreated = (newPeriod: HistoricalPeriod) => {
-    const updated = getAllPeriods();
-    setAllPeriods(updated);
-    handleSelectPeriod(newPeriod.id);
-    setActiveTab('dashboard');
   };
 
   const handleCloudSync = async () => {
@@ -102,7 +84,7 @@ export const App: React.FC = () => {
         {/* Header */}
         <Header
           currentRole={currentRole}
-          onOpenRoleSelector={() => setShowRoleModal(true)}
+          onSelectRole={handleSelectRole}
           overallAvailability={activePeriod.avgAvailability}
           allPeriods={allPeriods}
           activePeriodId={activePeriodId}
@@ -118,16 +100,8 @@ export const App: React.FC = () => {
               currentRole={currentRole}
               activePeriod={activePeriod}
               timelineFilter={timelineFilter}
-              onOpenTimelineModal={() => setShowTimelineModal(true)}
+              setTimelineFilter={setTimelineFilter}
               onNavigateToSites={handleNavigateToSites}
-              onNavigateToGraphs={() => setActiveTab('graphs')}
-            />
-          )}
-
-          {activeTab === 'graphs' && (
-            <GraphsTab
-              currentRole={currentRole}
-              activePeriod={activePeriod}
             />
           )}
 
@@ -136,17 +110,7 @@ export const App: React.FC = () => {
               currentRole={currentRole}
               activePeriod={activePeriod}
               timelineFilter={timelineFilter}
-              onOpenTimelineModal={() => setShowTimelineModal(true)}
               initialQuery={siteSearchQuery}
-            />
-          )}
-
-          {activeTab === 'import' && (
-            <ImportTab
-              onPeriodCreated={handlePeriodCreated}
-              onCheckUpdates={handleManualCheckUpdates}
-              onCloudSync={handleCloudSync}
-              isSyncing={isSyncing}
             />
           )}
         </main>
@@ -154,18 +118,15 @@ export const App: React.FC = () => {
         {/* Bottom Tab Bar */}
         <BottomNavBar
           activeTab={activeTab}
-          onChangeTab={(tab) => setActiveTab(tab)}
+          onChangeTab={(tab) => {
+            if (tab === 'dashboard' || tab === 'sites') {
+              setActiveTab(tab);
+            }
+          }}
         />
       </div>
 
-      {/* Global Timeline Filter Modal (From Date ➔ To Date) */}
-      {showTimelineModal && (
-        <TimelineFilterModal
-          currentFilter={timelineFilter}
-          onApplyFilter={(newFilter) => setTimelineFilter(newFilter)}
-          onClose={() => setShowTimelineModal(false)}
-        />
-      )}
+
 
       {/* Role & MBU Selection Modal */}
       {showRoleModal && (
