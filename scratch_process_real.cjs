@@ -200,9 +200,14 @@ deodarRslRows.forEach((row, i) => {
 
   if (!siteMap[siteCode]) {
     const swRow = siteWiseMap[siteCode] || {};
-    // NAR from SiteWiseDT Total NAR (decimal, multiply by 100)
-    const totalNar = swRow['Total NAR'] !== undefined && swRow['Total NAR'] !== '' 
-      ? parseFloat(swRow['Total NAR']) * 100 : 99.0;
+    const ndRow = narDayMap[siteCode] || {};
+    // NAR from Site NAR-Day 'Average NAR' column (primary), fallback to SiteWiseDT 'Total NAR'
+    let totalNar = 99.0;
+    if (ndRow['Average NAR'] !== undefined && ndRow['Average NAR'] !== '' && !isNaN(ndRow['Average NAR'])) {
+      totalNar = parseFloat(ndRow['Average NAR']) * 100;
+    } else if (swRow['Total NAR'] !== undefined && swRow['Total NAR'] !== '' && !isNaN(swRow['Total NAR'])) {
+      totalNar = parseFloat(swRow['Total NAR']) * 100;
+    }
     const totalDtMinutes = swRow['TDT'] !== undefined && swRow['TDT'] !== '' 
       ? parseFloat(swRow['TDT']) : 0;
 
