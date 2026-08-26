@@ -13,24 +13,12 @@ const cbRows = XLSX.utils.sheet_to_json(workbook.Sheets['4G CounterBased Site Wi
 
 console.log('Loaded rows - RSL:', rslRows.length, 'SiteWise:', siteWiseRows.length, 'NAR-Day:', narDayRows.length);
 
-// 1. Identify Deodar Site Codes (Union of 4G sheet and RSL status)
+// 1. Identify Deodar Site Codes (Only sites hosted by DEODAR or JAZZ)
 const deodarCodes = new Set();
 
-// From RSL sheet
-rslRows.forEach(row => {
-  const val = String(row['Deodar/NonDeodar'] || '').trim().toLowerCase();
-  if (val === 'deodar' || val === 'force-majure-deodar') {
-    const code = String(row['SiteCode'] || row['Code'] || '').trim().toLowerCase();
-    if (code) deodarCodes.add(code);
-  }
-});
-
-// From 4G sheet
 cbRows.forEach(row => {
-  const omoColoc = String(row['OMO Colocation'] || '').trim().toLowerCase();
-  const omoHost = String(row['OMO host name '] || '').trim().toLowerCase();
-  const category = String(row['Category'] || '').trim().toLowerCase();
-  if (omoColoc === 'deodar' || omoHost === 'deodar' || category === 'deodar cp prime') {
+  const omoHost = String(row['OMO host name '] || '').trim().toUpperCase();
+  if (omoHost === 'DEODAR' || omoHost === 'JAZZ') {
     const code = String(row['SiteCode'] || '').trim().toLowerCase();
     if (code) deodarCodes.add(code);
   }
