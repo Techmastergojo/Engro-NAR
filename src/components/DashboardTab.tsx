@@ -29,6 +29,13 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 }) => {
   const isAdmin = currentRole === 'admin';
 
+  const [activePreset, setActivePreset] = useState<number | '6m' | null>(null);
+
+  const maxDateStr = useMemo(() => {
+    const dates = activePeriod.dailyTimeline.map(d => d.date).sort();
+    return dates.length > 0 ? dates[dates.length - 1] : '2026-08-24';
+  }, [activePeriod.dailyTimeline]);
+
   // State for MBU leaderboards dropdown (default: if admin, 'C4-GUJ-01', else lock to currentRole)
   const [selectedMbuLeaderboard, setSelectedMbuLeaderboard] = useState<string>(
     isAdmin ? 'C4-GUJ-01' : currentRole
@@ -105,20 +112,29 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
   // Handler for presets
   const handleApplyPreset = (days: number | '6m') => {
+    setActivePreset(days);
     if (days === '6m') {
       setTimelineFilter({
         mode: 'six_months',
-        startDate: '2026-08-01', // backup
-        endDate: '2026-08-20'
+        startDate: '2026-08-01',
+        endDate: maxDateStr
       });
     } else {
-      const end = new Date('2026-08-20');
+      const localToday = new Date();
+      const pad = (num: number) => String(num).padStart(2, '0');
+      const todayStr = `${localToday.getFullYear()}-${pad(localToday.getMonth() + 1)}-${pad(localToday.getDate())}`;
+
+      // Cap end date at dataset max date
+      const endStr = todayStr > maxDateStr ? maxDateStr : todayStr;
+      
+      const end = new Date(endStr);
       const start = new Date(end);
       start.setDate(end.getDate() - (days - 1));
       
-      const pad = (num: number) => String(num).padStart(2, '0');
-      const startStr = `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`;
-      const endStr = `${end.getFullYear()}-${pad(end.getMonth() + 1)}-${pad(end.getDate())}`;
+      let startStr = `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`;
+      if (startStr < '2026-08-01') {
+        startStr = '2026-08-01';
+      }
 
       setTimelineFilter({
         mode: 'custom',
@@ -215,13 +231,14 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               className="styled-date-input"
               value={timelineFilter.mode === 'six_months' ? '2026-08-01' : timelineFilter.startDate}
               disabled={timelineFilter.mode === 'six_months'}
-              onChange={(e) =>
+              onChange={(e) => {
+                setActivePreset(null);
                 setTimelineFilter({
                   ...timelineFilter,
                   mode: 'custom',
                   startDate: e.target.value
-                })
-              }
+                });
+              }}
             />
           </div>
           <div className="timeline-input-group">
@@ -229,15 +246,16 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             <input
               type="date"
               className="styled-date-input"
-              value={timelineFilter.mode === 'six_months' ? '2026-08-20' : timelineFilter.endDate}
+              value={timelineFilter.mode === 'six_months' ? maxDateStr : timelineFilter.endDate}
               disabled={timelineFilter.mode === 'six_months'}
-              onChange={(e) =>
+              onChange={(e) => {
+                setActivePreset(null);
                 setTimelineFilter({
                   ...timelineFilter,
                   mode: 'custom',
                   endDate: e.target.value
-                })
-              }
+                });
+              }}
             />
           </div>
         </div>
@@ -245,26 +263,26 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         {/* Premade Range Presets */}
         <div className="timeline-presets-row">
           <button
-            className={`preset-btn ${timelineFilter.mode !== 'six_months' && timelineFilter.startDate === '2026-08-18' ? 'active' : ''}`}
+            className={`preset-btn ${timelineFilter.mode !== 'six_months' && activePreset === 3 ? 'active' : ''}`}
             onClick={() => handleApplyPreset(3)}
           >
             3 Days
           </button>
           <button
-            className={`preset-btn ${timelineFilter.mode !== 'six_months' && timelineFilter.startDate === '2026-08-14' ? 'active' : ''}`}
+            className={`preset-btn ${timelineFilter.mode !== 'six_months' && activePreset === 7 ? 'active' : ''}`}
             onClick={() => handleApplyPreset(7)}
           >
             7 Days
           </button>
           <button
-            className={`preset-btn ${timelineFilter.mode !== 'six_months' && timelineFilter.startDate === '2026-08-06' ? 'active' : ''}`}
+            className={`preset-btn ${timelineFilter.mode !== 'six_months' && activePreset === 15 ? 'active' : ''}`}
             onClick={() => handleApplyPreset(15)}
           >
             15 Days
           </button>
           <button
-            className={`preset-btn ${timelineFilter.mode !== 'six_months' && timelineFilter.startDate === '2026-08-01' ? 'active' : ''}`}
-            onClick={() => handleApplyPreset(20)}
+            className={`preset-btn ${timelineFilter.mode !== 'six_months' && activePreset === 30 ? 'active' : ''}`}
+            onClick={() => handleApplyPreset(30)}
           >
             1 Month
           </button>

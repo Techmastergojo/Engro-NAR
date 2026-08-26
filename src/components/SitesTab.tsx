@@ -29,6 +29,13 @@ export const SitesTab: React.FC<SitesTabProps> = ({
   const [selectedSite, setSelectedSite] = useState<SiteCatalogItem | null>(null);
   const [pageLimit, setPageLimit] = useState<number>(25);
 
+  const [activeModalPreset, setActiveModalPreset] = useState<number | '6m' | null>(null);
+
+  const maxDateStr = useMemo(() => {
+    const dates = activePeriod.dailyTimeline.map(d => d.date).sort();
+    return dates.length > 0 ? dates[dates.length - 1] : '2026-08-24';
+  }, [activePeriod.dailyTimeline]);
+
   // Modal Timeline State (Local to site detail view)
   const [modalTimelineMode, setModalTimelineMode] = useState<'daily' | 'six_months'>('daily');
   const [modalFromDate, setModalFromDate] = useState<string>(timelineFilter.startDate);
@@ -127,17 +134,26 @@ export const SitesTab: React.FC<SitesTabProps> = ({
   }, [selectedSite, modalTimelineMode, modalFromDate, modalToDate]);
 
   const handleApplyModalPreset = (days: number | '6m') => {
+    setActiveModalPreset(days);
     if (days === '6m') {
       setModalTimelineMode('six_months');
     } else {
       setModalTimelineMode('daily');
-      const end = new Date('2026-08-20');
+      const localToday = new Date();
+      const pad = (num: number) => String(num).padStart(2, '0');
+      const todayStr = `${localToday.getFullYear()}-${pad(localToday.getMonth() + 1)}-${pad(localToday.getDate())}`;
+
+      // Cap end date at dataset max date
+      const endStr = todayStr > maxDateStr ? maxDateStr : todayStr;
+      
+      const end = new Date(endStr);
       const start = new Date(end);
       start.setDate(end.getDate() - (days - 1));
       
-      const pad = (num: number) => String(num).padStart(2, '0');
-      const startStr = `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`;
-      const endStr = `${end.getFullYear()}-${pad(end.getMonth() + 1)}-${pad(end.getDate())}`;
+      let startStr = `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`;
+      if (startStr < '2026-08-01') {
+        startStr = '2026-08-01';
+      }
 
       setModalFromDate(startStr);
       setModalToDate(endStr);
@@ -308,6 +324,7 @@ export const SitesTab: React.FC<SitesTabProps> = ({
                     disabled={modalTimelineMode === 'six_months'}
                     onChange={(e) => {
                       setModalTimelineMode('daily');
+                      setActiveModalPreset(null);
                       setModalFromDate(e.target.value);
                     }}
                   />
@@ -317,10 +334,11 @@ export const SitesTab: React.FC<SitesTabProps> = ({
                   <input
                     type="date"
                     className="styled-date-input"
-                    value={modalTimelineMode === 'six_months' ? '2026-08-20' : modalToDate}
+                    value={modalTimelineMode === 'six_months' ? maxDateStr : modalToDate}
                     disabled={modalTimelineMode === 'six_months'}
                     onChange={(e) => {
                       setModalTimelineMode('daily');
+                      setActiveModalPreset(null);
                       setModalToDate(e.target.value);
                     }}
                   />
@@ -330,26 +348,26 @@ export const SitesTab: React.FC<SitesTabProps> = ({
               {/* Premade Range Presets for Modal */}
               <div className="timeline-presets-row">
                 <button
-                  className={`preset-btn ${modalTimelineMode !== 'six_months' && modalFromDate === '2026-08-18' ? 'active' : ''}`}
+                  className={`preset-btn ${modalTimelineMode !== 'six_months' && activeModalPreset === 3 ? 'active' : ''}`}
                   onClick={() => handleApplyModalPreset(3)}
                 >
                   3 Days
                 </button>
                 <button
-                  className={`preset-btn ${modalTimelineMode !== 'six_months' && modalFromDate === '2026-08-14' ? 'active' : ''}`}
+                  className={`preset-btn ${modalTimelineMode !== 'six_months' && activeModalPreset === 7 ? 'active' : ''}`}
                   onClick={() => handleApplyModalPreset(7)}
                 >
                   7 Days
                 </button>
                 <button
-                  className={`preset-btn ${modalTimelineMode !== 'six_months' && modalFromDate === '2026-08-06' ? 'active' : ''}`}
+                  className={`preset-btn ${modalTimelineMode !== 'six_months' && activeModalPreset === 15 ? 'active' : ''}`}
                   onClick={() => handleApplyModalPreset(15)}
                 >
                   15 Days
                 </button>
                 <button
-                  className={`preset-btn ${modalTimelineMode !== 'six_months' && modalFromDate === '2026-08-01' ? 'active' : ''}`}
-                  onClick={() => handleApplyModalPreset(20)}
+                  className={`preset-btn ${modalTimelineMode !== 'six_months' && activeModalPreset === 30 ? 'active' : ''}`}
+                  onClick={() => handleApplyModalPreset(30)}
                 >
                   1 Month
                 </button>

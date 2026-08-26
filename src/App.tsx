@@ -17,12 +17,6 @@ export const App: React.FC = () => {
   const [activePeriodId, setActivePeriodIdState] = useState<string>(() => getActivePeriodId());
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
 
-  // Global Timeline Filter State (From Date ➔ To Date)
-  const [timelineFilter, setTimelineFilter] = useState<GlobalTimelineFilter>({
-    mode: 'all',
-    startDate: '2026-08-01',
-    endDate: '2026-08-20'
-  });
   const [currentRole, setCurrentRole] = useState<UserRole>(() => {
     const saved = localStorage.getItem('engro_user_role');
     return (saved as UserRole) || 'admin';
@@ -38,6 +32,25 @@ export const App: React.FC = () => {
 
   // Active dataset
   const activePeriod = allPeriods.find((p) => p.id === activePeriodId) || getActivePeriod();
+
+  // Global Timeline Filter State (From Date ➔ To Date) - dynamic based on dataset
+  const [timelineFilter, setTimelineFilter] = useState<GlobalTimelineFilter>(() => {
+    const dates = activePeriod.dailyTimeline.map(d => d.date).sort();
+    const maxDateStr = dates.length > 0 ? dates[dates.length - 1] : '2026-08-24';
+    
+    const localToday = new Date();
+    const pad = (num: number) => String(num).padStart(2, '0');
+    const todayStr = `${localToday.getFullYear()}-${pad(localToday.getMonth() + 1)}-${pad(localToday.getDate())}`;
+
+    // If today is after the max available date in the dataset, cap it
+    const endStr = todayStr > maxDateStr ? maxDateStr : todayStr;
+
+    return {
+      mode: 'all',
+      startDate: '2026-08-01',
+      endDate: endStr
+    };
+  });
 
   // Check for app updates on startup
   useEffect(() => {

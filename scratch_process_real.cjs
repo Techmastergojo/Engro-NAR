@@ -1,90 +1,55 @@
 const fs = require('fs');
-const path = require('path');
+const XLSX = require('xlsx');
 
-// Robust custom CSV parser supporting commas and newlines inside quotes
-function parseCSV(filePath) {
-  if (!fs.existsSync(filePath)) {
-    throw new Error(`File not found: ${filePath}`);
-  }
-  const content = fs.readFileSync(filePath, 'utf8');
-  
-  const rows = [];
-  let currentField = '';
-  let inQuotes = false;
-  let currentRow = [];
-  
-  for (let i = 0; i < content.length; i++) {
-    const char = content[i];
-    const nextChar = content[i + 1];
-    
-    if (char === '"') {
-      if (inQuotes && nextChar === '"') {
-        currentField += '"';
-        i++; // skip next quote
-      } else {
-        inQuotes = !inQuotes;
-      }
-    } else if (char === ',' && !inQuotes) {
-      currentRow.push(currentField.trim());
-      currentField = '';
-    } else if ((char === '\r' || char === '\n') && !inQuotes) {
-      if (char === '\r' && nextChar === '\n') {
-        i++; // skip \n
-      }
-      currentRow.push(currentField.trim());
-      rows.push(currentRow);
-      currentRow = [];
-      currentField = '';
-    } else {
-      currentField += char;
-    }
-  }
-  if (currentField || currentRow.length > 0) {
-    currentRow.push(currentField.trim());
-    rows.push(currentRow);
-  }
-  
-  if (rows.length === 0) return [];
-  
-  // Header is the first row, clean BOM
-  const rawHeaders = rows[0];
-  const headers = rawHeaders.map(h => h.replace(/^\ufeff/, '').trim());
-  
-  const records = [];
-  for (let i = 1; i < rows.length; i++) {
-    const row = {};
-    headers.forEach((header, idx) => {
-      row[header] = rows[i][idx] !== undefined ? rows[i][idx] : '';
-    });
-    records.push(row);
-  }
-  return records;
-}
+// Load sheets from Excel file
+console.log('Loading Excel workbook `C4 Overall Performance Aug-2026.xlsx`...');
+const workbook = XLSX.readFile('C4 Overall Performance Aug-2026.xlsx');
 
-// Load sheets from CSV files
-console.log('Loading CSV files from `./csv files data/`...');
-const rslRows = parseCSV('./csv files data/Consolidated RSL Aug-26.csv');
-const siteWiseRows = parseCSV('./csv files data/SiteWiseDT.csv');
-const narDayRows = parseCSV('./csv files data/Site NAR-Day.csv');
-const dateWiseRows = parseCSV('./csv files data/DateWiseDT.csv');
+const rslRows = XLSX.utils.sheet_to_json(workbook.Sheets['Consolidated RSL Aug-26'], { defval: '' });
+const siteWiseRows = XLSX.utils.sheet_to_json(workbook.Sheets['SiteWiseDT'], { defval: '' });
+const narDayRows = XLSX.utils.sheet_to_json(workbook.Sheets['Site NAR-Day'], { defval: '' });
+const dateWiseRows = XLSX.utils.sheet_to_json(workbook.Sheets['DateWiseDT'], { defval: '' });
 
-console.log('Loaded RSL Rows:', rslRows.length);
+console.log('Loaded Consolidated RSL Rows:', rslRows.length);
 console.log('Loaded SiteWiseDT Rows:', siteWiseRows.length);
 console.log('Loaded Site NAR-Day Rows:', narDayRows.length);
 console.log('Loaded DateWiseDT Rows:', dateWiseRows.length);
 
-// Helper for date extraction
-function normalizeDateStr(dateStr) {
-  if (!dateStr) return '2026-08-01';
-  return dateStr.split(' ')[0];
+// Robust Excel serial date converter
+function excelDateToDateStr(val) {
+  if (val === undefined || val === null || val === '') return '2026-08-01';
+  if (typeof val === 'number') {
+    const date = new Date(Math.round((val - 25569) * 86400 * 1000));
+    const y = date.getUTCFullYear();
+    const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(date.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  const str = String(val).trim();
+  if (str.includes(' ')) {
+    return str.split(' ')[0];
+  }
+  // If it's a numeric string, parse it
+  const num = parseFloat(str);
+  if (!isNaN(num) && String(num) === str && num > 40000 && num < 50000) {
+    return excelDateToDateStr(num);
+  }
+  return str;
 }
 
-// Helper to look up daily column in CSV rows
+// Helper to look up daily column in SheetJS rows
 function getDailyValue(row, dateStr) {
-  const key1 = `${dateStr} 00:00:00`;
-  const key2 = dateStr;
-  if (row[key1] !== undefined && row[key1] !== '') return parseFloat(row[key1]);
-  if (row[key2] !== undefined && row[key2] !== '') return parseFloat(row[key2]);
+  for (const [key, val] of Object.entries(row)) {
+    let normKey;
+    if (!isNaN(key)) {
+      normKey = excelDateToDateStr(parseFloat(key));
+    } else {
+      normKey = excelDateToDateStr(key);
+    }
+    if (normKey === dateStr && val !== undefined && val !== '') {
+      return parseFloat(val);
+    }
+  }
   return undefined;
 }
 
@@ -128,7 +93,7 @@ const dateWiseMap = {};
 dateWiseRows.forEach(row => {
   const mbuVal = row['MBU'];
   if (mbuVal) {
-    const dateStr = normalizeDateStr(mbuVal);
+    const dateStr = excelDateToDateStr(mbuVal);
     dateWiseMap[dateStr] = row;
   }
 });
@@ -153,7 +118,7 @@ deodarRslRows.forEach((row, i) => {
   
   const reason = String(row['Reasons'] || row['Reason Category'] || 'Commercial Power Grid').trim();
   const category = String(row['Reason Category'] || row['General'] || 'Grid Power').trim();
-  const dateStr = normalizeDateStr(row['Occurring']);
+  const dateStr = excelDateToDateStr(row['Occurring']);
   const vendor = String(row['Vendor'] || 'Huawei');
   const siteType = String(row['SiteType'] || 'Macro');
   const priority = String(row['Priority'] || 'General');
@@ -334,4 +299,4 @@ const exportData = {
 
 // Write output
 fs.writeFileSync('./src/utils/realEngroData.json', JSON.stringify(exportData, null, 2));
-console.log(`Successfully compiled Deodar-only catalog for ${allSitesCatalog.length} sites into realEngroData.json from CSV files!`);
+console.log(`Successfully compiled Deodar-only catalog for ${allSitesCatalog.length} sites into realEngroData.json from C4 Overall Performance Aug-2026.xlsx!`);
