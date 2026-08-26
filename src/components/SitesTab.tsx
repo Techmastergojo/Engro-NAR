@@ -58,8 +58,8 @@ export const SitesTab: React.FC<SitesTabProps> = ({
       });
 
       const rangeDtHours = filteredDays.reduce((sum, d) => sum + d.hours, 0);
-      const totalPossibleHours = Math.max(1, filteredDays.length) * 24;
-      const rangeNar = Math.max(0, Number(((totalPossibleHours - rangeDtHours) / totalPossibleHours * 100).toFixed(2)));
+      const sumNar = filteredDays.reduce((sum, d) => sum + (d.narPercent ?? 100), 0);
+      const rangeNar = Number((sumNar / Math.max(1, filteredDays.length)).toFixed(2));
 
       return {
         ...site,
@@ -112,15 +112,14 @@ export const SitesTab: React.FC<SitesTabProps> = ({
       }) || [];
 
       const totalDt = filteredDays.reduce((sum, d) => sum + d.hours, 0);
-      const totalHours = Math.max(1, filteredDays.length) * 24;
-      const avgNar = Math.max(0, Number(((totalHours - totalDt) / totalHours * 100).toFixed(2)));
+      const sumNar = filteredDays.reduce((sum, d) => sum + (d.narPercent ?? 100), 0);
+      const avgNar = Number((sumNar / Math.max(1, filteredDays.length)).toFixed(2));
 
       const chartData = filteredDays.map((d) => {
         const dayNum = parseInt(d.date.split('-')[2] || '1', 10);
-        const dayNar = Number(((24 - Math.min(24, d.hours)) / 24 * 100).toFixed(2));
         return {
           label: `Aug ${dayNum}`,
-          narPercent: dayNar,
+          narPercent: d.narPercent ?? 100,
           downtimeHours: Number(d.hours.toFixed(1))
         };
       });

@@ -71,8 +71,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       });
 
       const totalDt = filteredDays.reduce((sum, d) => sum + d.hours, 0);
-      const totalHours = Math.max(1, filteredDays.length) * 24;
-      const avail = Math.max(0, Number(((totalHours - totalDt) / totalHours * 100).toFixed(2)));
+      const sumNar = filteredDays.reduce((sum, d) => sum + (d.narPercent ?? 100), 0);
+      const avail = Number((sumNar / Math.max(1, filteredDays.length)).toFixed(2));
 
       return {
         ...site,
