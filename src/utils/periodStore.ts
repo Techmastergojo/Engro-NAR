@@ -1,16 +1,46 @@
 import type { HistoricalPeriod, MonthlyNarRecord, SiteCatalogItem, DailySummary } from '../types';
 import realDataJson from './realEngroData.json';
 
-const GLOBAL_6_MONTH_NAR: MonthlyNarRecord[] = [
-  { monthKey: '2026-03', monthLabel: 'Mar 2026', narPercent: 99.81, totalDowntimeHours: 4210, totalAlarms: 3840 },
-  { monthKey: '2026-04', monthLabel: 'Apr 2026', narPercent: 99.79, totalDowntimeHours: 4650, totalAlarms: 4120 },
-  { monthKey: '2026-05', monthLabel: 'May 2026', narPercent: 99.85, totalDowntimeHours: 3520, totalAlarms: 3200 },
-  { monthKey: '2026-06', monthLabel: 'Jun 2026', narPercent: 99.83, totalDowntimeHours: 3890, totalAlarms: 3610 },
-  { monthKey: '2026-07', monthLabel: 'Jul 2026', narPercent: 99.86, totalDowntimeHours: 3140, totalAlarms: 2980 },
-  { monthKey: '2026-08', monthLabel: 'Aug 2026', narPercent: 98.47, totalDowntimeHours: 17210.1, totalAlarms: 33172 }
-];
+const rawSites = (realDataJson as unknown as { allSites: SiteCatalogItem[] }).allSites || [];
 
-// Helper to compute 6-month NAR for any site based on baseline availability
+const GLOBAL_6_MONTH_NAR: MonthlyNarRecord[] = (() => {
+  const result: MonthlyNarRecord[] = [];
+  const months = ['2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07'];
+  const monthLabels = ['Feb 2026', 'Mar 2026', 'Apr 2026', 'May 2026', 'Jun 2026', 'Jul 2026'];
+  
+  months.forEach((m, idx) => {
+    let sum = 0;
+    let count = 0;
+    rawSites.forEach(s => {
+      const hist = s.nar6Months?.find(h => h.monthKey === m);
+      if (hist) {
+        sum += hist.narPercent;
+        count++;
+      }
+    });
+    const avg = count > 0 ? Number((sum / count).toFixed(2)) : 99.80;
+    result.push({
+      monthKey: m,
+      monthLabel: monthLabels[idx],
+      narPercent: avg,
+      totalDowntimeHours: 0,
+      totalAlarms: 0
+    });
+  });
+  
+  // Add August 2026 from August summary
+  result.push({
+    monthKey: '2026-08',
+    monthLabel: 'Aug 2026',
+    narPercent: (realDataJson as any).summary?.avgAvailability || 98.47,
+    totalDowntimeHours: (realDataJson as any).summary?.totalDowntimeHours || 0,
+    totalAlarms: 0
+  });
+  
+  return result;
+})();
+
+// Helper to compute 6-month NAR for any site based on baseline availability (fallback only)
 function computeSite6MonthNar(siteAvail: number, siteTotalDt: number): MonthlyNarRecord[] {
   const variations = [-0.14, 0.08, -0.05, 0.12, -0.02, 0];
   return GLOBAL_6_MONTH_NAR.map((m, idx) => {
@@ -27,12 +57,14 @@ function computeSite6MonthNar(siteAvail: number, siteTotalDt: number): MonthlyNa
 }
 
 // Ensure all raw sites have their 6-Month NAR & daily NAR initialized
-const rawSites = (realDataJson as unknown as { allSites: SiteCatalogItem[] }).allSites || [];
 const enrichedSites: SiteCatalogItem[] = rawSites.map((s) => {
   const siteAvail = s.availability || 99.0;
   const siteDt = s.totalDtHours || 0;
 
-  const nar6Months = computeSite6MonthNar(siteAvail, siteDt);
+  // Use parsed nar6Months if available, otherwise compute it
+  const nar6Months = s.nar6Months && s.nar6Months.length > 0
+    ? s.nar6Months
+    : computeSite6MonthNar(siteAvail, siteDt);
 
   const enrichedTimeline = (s.dailyTimeline || []).map((d) => {
     return {
@@ -49,7 +81,6 @@ const enrichedSites: SiteCatalogItem[] = rawSites.map((s) => {
     dailyTimeline: enrichedTimeline
   };
 });
-
 
 // Enrich daily timeline with daily NAR %
 const rawTimeline = (realDataJson as unknown as { dailyTimeline: DailySummary[] }).dailyTimeline || [];

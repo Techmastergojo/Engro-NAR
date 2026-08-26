@@ -94,15 +94,26 @@ const swDateMap = buildHeaderDateMap(swKeys);
 console.log('NAR-Day keys mapped:', Object.keys(ndDateMap).length, 'Sample:', Object.entries(ndDateMap).slice(0, 3));
 console.log('SiteWiseDT keys mapped:', Object.keys(swDateMap).length, 'Sample:', Object.entries(swDateMap).slice(0, 3));
 
-// Determine active date range based on columns with data
-const activeDates = Object.keys(ndDateMap).sort();
-const maxDate = activeDates[activeDates.length - 1] || '2026-08-24';
+// Find max occurred date in Consolidated RSL Aug-26 to cap timeline (removing mock dates)
+let rslMaxDate = '2026-08-01';
+rslRows.forEach(row => {
+  if (row['Occurring']) {
+    const d = excelSerialToDateStr(parseFloat(row['Occurring']));
+    if (d.startsWith('2026-08') && d > rslMaxDate) {
+      rslMaxDate = d;
+    }
+  }
+});
+
+// Determine active date range based on columns with data, capped at RSL max date
+const activeDates = Object.keys(ndDateMap).filter(d => d <= rslMaxDate).sort();
+const maxDate = activeDates[activeDates.length - 1] || rslMaxDate;
 const dateRange = [];
 const maxDayNum = parseInt(maxDate.split('-')[2], 10);
 for (let d = 1; d <= maxDayNum; d++) {
   dateRange.push(`2026-08-${String(d).padStart(2, '0')}`);
 }
-console.log(`Active date range: ${dateRange[0]} to ${maxDate} (${dateRange.length} days)`);
+console.log(`Active date range capped at RSL max date: ${dateRange[0]} to ${maxDate} (${dateRange.length} days)`);
 
 // 4. Build Lookup Maps
 const siteWiseMap = {};
