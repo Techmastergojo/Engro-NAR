@@ -339,7 +339,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         </div>
         <div className="chart-wrapper" style={{ width: '100%', height: 160 }}>
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={activeChartData as any[]} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+            <AreaChart key={`${timelineFilter.mode}-${activeChartData.length}`} data={activeChartData as any[]} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
               <defs>
                 <linearGradient id="narEmerald" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#10b981" stopOpacity={0.25} />

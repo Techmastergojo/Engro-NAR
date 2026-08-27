@@ -51,6 +51,8 @@ function buildHeaderDateMap(headers) {
   headers.forEach(h => {
     if (h === undefined || h === null) return;
     let day = null;
+    let month = null;
+    let year = 2026; // default
     const str = String(h).trim();
     
     // Check if numeric serial date (e.g. 46235)
@@ -58,16 +60,29 @@ function buildHeaderDateMap(headers) {
       const serial = parseFloat(str);
       const date = new Date(Math.round((serial - 25569) * 86400 * 1000));
       day = date.getUTCDate();
+      month = date.getUTCMonth() + 1;
+      year = date.getUTCFullYear();
     } else {
-      // Check if matches e.g. "1-Aug", "17-Aug"
-      const m = str.match(/^(\d+)-(Aug|Sep|Oct|Nov|Dec|Jan|Feb|Mar|Apr|May|Jun|Jul)(-\d+)?$/i);
+      // Check if matches e.g. "1-Aug", "17-Sep", "24-Aug-26"
+      const m = str.match(/^(\d+)-(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)(-\d+)?$/i);
       if (m) {
         day = parseInt(m[1], 10);
+        const monthName = m[2].toLowerCase();
+        const monthsMap = {
+          jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+          jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12
+        };
+        month = monthsMap[monthName];
+        if (m[3]) {
+          const yr = m[3].replace(/^-/, '');
+          year = yr.length === 2 ? 2000 + parseInt(yr, 10) : parseInt(yr, 10);
+        }
       }
     }
     
-    if (day !== null && day >= 1 && day <= 31) {
-      dateMap[`2026-08-${String(day).padStart(2, '0')}`] = h;
+    if (day !== null && month !== null && year !== null) {
+      const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      dateMap[dateStr] = h;
     }
   });
   return dateMap;
@@ -87,21 +102,15 @@ let rslMaxDate = '2026-08-01';
 rslRows.forEach(row => {
   if (row['Occurring']) {
     const d = excelSerialToDateStr(parseFloat(row['Occurring']));
-    if (d.startsWith('2026-08') && d > rslMaxDate) {
+    if (d && d > rslMaxDate) {
       rslMaxDate = d;
     }
   }
 });
 
 // Determine active date range based on columns with data, capped at RSL max date
-const activeDates = Object.keys(ndDateMap).filter(d => d <= rslMaxDate).sort();
-const maxDate = activeDates[activeDates.length - 1] || rslMaxDate;
-const dateRange = [];
-const maxDayNum = parseInt(maxDate.split('-')[2], 10);
-for (let d = 1; d <= maxDayNum; d++) {
-  dateRange.push(`2026-08-${String(d).padStart(2, '0')}`);
-}
-console.log(`Active date range capped at RSL max date: ${dateRange[0]} to ${maxDate} (${dateRange.length} days)`);
+const dateRange = Object.keys(ndDateMap).filter(d => d <= rslMaxDate).sort();
+console.log(`Active date range capped at RSL max date: ${dateRange[0]} to ${rslMaxDate} (${dateRange.length} days)`);
 
 // 4. Build Lookup Maps
 const siteWiseMap = {};
@@ -114,6 +123,16 @@ const hist2gMap = {};
 hist2gRows.forEach(row => {
   const code = String(row['Site Code'] || '').trim().toLowerCase();
   if (code) hist2gMap[code] = row;
+});
+
+// Build index map for RSL incidents by site code to avoid O(N*M) performance penalty
+const rslIncidentsMap = {};
+rslRows.forEach(row => {
+  const code = String(row['SiteCode'] || row['Code'] || '').trim().toLowerCase();
+  if (code) {
+    if (!rslIncidentsMap[code]) rslIncidentsMap[code] = [];
+    rslIncidentsMap[code].push(row);
+  }
 });
 
 // 5. Filter NAR-Day rows to Deodar sites only
@@ -188,7 +207,7 @@ const allSitesCatalog = deodarNarDayRows.map(row => {
   }
 
   // Top reasons from RSL sheet for this site
-  const siteIncidents = rslRows.filter(r => String(r['SiteCode'] || r['Code'] || '').trim().toLowerCase() === siteCodeLower);
+  const siteIncidents = rslIncidentsMap[siteCodeLower] || [];
   const reasonsMap = {};
   siteIncidents.forEach(r => {
     const reason = String(r['Reasons'] || r['Reason Category'] || 'Commercial Power Grid').trim();

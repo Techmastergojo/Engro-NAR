@@ -404,7 +404,7 @@ export const SitesTab: React.FC<SitesTabProps> = ({
               </div>
               <div className="chart-wrapper" style={{ width: '100%', height: 130 }}>
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={modalSiteStats.chartData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
+                  <AreaChart key={`${modalTimelineMode}-${modalSiteStats.chartData.length}`} data={modalSiteStats.chartData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
                     <defs>
                       <linearGradient id="siteEmerald" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#10b981" stopOpacity={0.25} />
